@@ -135,7 +135,6 @@ function renderSkeleton() {
             // screen reader otherwise announces the composer as an unlabelled
             // text field and the send/stop button as just "button".
             h += `<textarea class="chat-input-message" data-gramm="false" placeholder="What can Puter build for you today?" aria-label="Message"></textarea>`;
-            h += `<div class="model-picker" title="Choose AI model"><span class="model-picker-label">AI</span><select class="model-picker-select" aria-label="Choose AI model"><option value="">Loading models...</option></select></div>`;
             h += `<div class="chat-input-message-actions">`;
                 h += `<button class="attachment-button" title="Attach files from your computer">${attachment_svg}</button>`;
                 h += `<input type="file" class="attachment-file-input" accept="${ATTACHMENT_ACCEPT}" multiple style="display:none">`;
