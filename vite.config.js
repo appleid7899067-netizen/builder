@@ -199,11 +199,6 @@ function classicBundle() {
       }));
     },
     async closeBundle() {
-      // Vite may not have created the configured outDir yet when this hook runs
-      // on a clean CI/Render checkout. Create it explicitly because this hook
-      // writes stable runtime assets before any later plugin can rely on it.
-      fs.mkdirSync(OUT_DIR, { recursive: true });
-
       // The Puter runtime script — the "Made with Puter" badge plus the
       // click-to-edit bridge — loaded by every generated app via an absolute
       // <script src> URL (see src/runtime.js), so it must ship at stable,
