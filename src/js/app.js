@@ -1,11 +1,6 @@
 let MODEL = (() => { try { return localStorage.getItem('puter_builder_model') || ''; } catch (e) { return ''; } })();
 const MODEL_STORAGE_KEY = 'puter_builder_model';
-
-function modelCostLabel(model) {
-    const cost = model && model.cost;
-    if (!cost) return '';
-    if (cost.input === 0 && cost.output === 0) return 'FREE';
-    if (cost.currency === 'usd-cents' && Number.isFinite(Number(cost.input)) && Number.isFinite(Number(cost.output))) return '
+function modelCostLabel(model) { const cost = model && model.cost; if (!cost) return ''; if (cost.input === 0 && cost.output === 0) return 'FREE'; if (cost.currency === 'usd-cents') return '
 let system_prompt
 let chatHistory;
 let currentAppDir;
@@ -10015,48 +10010,10 @@ async function regenerateContinueSuggestions() {
     }
 }
 window.regenerateContinueSuggestions = regenerateContinueSuggestions;
- + Number(cost.output);
-    return '';
-}
-function modelName(model) { return model.name || model.id; }
+ + Number(cost.output); return ''; }
 function modelIsClaude(model) { return /claude|anthropic/i.test(String(model.id || model.name || '')); }
-async function initializeModelPicker() {
-    const select = document.querySelector('.model-picker-select');
-    if (!select || !window.puter || !puter.ai || !puter.ai.listModels) return;
-    try {
-        const models = await puter.ai.listModels();
-        const usable = (Array.isArray(models) ? models : []).filter(model => model && model.id && !modelIsClaude(model)).sort((a, b) => {
-            const af = String(a.id).endsWith(':free') ? 0 : 1;
-            const bf = String(b.id).endsWith(':free') ? 0 : 1;
-            return af - bf || modelName(a).localeCompare(modelName(b));
-        });
-        select.innerHTML = '';
-        usable.forEach(model => {
-            const option = document.createElement('option');
-            option.value = model.id;
-            option.textContent = modelName(model) + (modelCostLabel(model) ? ' · ' + modelCostLabel(model) : '');
-            select.appendChild(option);
-        });
-        const saved = localStorage.getItem(MODEL_STORAGE_KEY);
-        const selected = usable.find(model => model.id === saved) || usable[0];
-        if (selected) {
-            MODEL = selected.id;
-            select.value = selected.id;
-            localStorage.setItem(MODEL_STORAGE_KEY, MODEL);
-        }
-    } catch (error) {
-        console.warn('Could not load Puter models:', error);
-    }
-}
-function bindModelPicker() {
-    const select = document.querySelector('.model-picker-select');
-    if (!select || select.dataset.bound) return;
-    select.dataset.bound = '1';
-    select.addEventListener('change', () => {
-        MODEL = select.value;
-        localStorage.setItem(MODEL_STORAGE_KEY, MODEL);
-    });
-}
+async function initializeModelPicker() { const select = document.querySelector('.model-picker-select'); if (!select || !window.puter || !puter.ai || !puter.ai.listModels) return; try { const models = await puter.ai.listModels(); const usable = (Array.isArray(models) ? models : []).filter(model => model && model.id && !modelIsClaude(model)).sort((a,b) => (String(a.id).endsWith(':free') ? 0 : 1) - (String(b.id).endsWith(':free') ? 0 : 1) || String(a.name || a.id).localeCompare(String(b.name || b.id))); select.innerHTML = ''; usable.forEach(model => { const option = document.createElement('option'); option.value = model.id; option.textContent = (model.name || model.id) + (modelCostLabel(model) ? ' · ' + modelCostLabel(model) : ''); select.appendChild(option); }); const saved = localStorage.getItem(MODEL_STORAGE_KEY); const selected = usable.find(model => model.id === saved) || usable[0]; if (selected) { MODEL = selected.id; select.value = selected.id; localStorage.setItem(MODEL_STORAGE_KEY, MODEL); } } catch (error) { console.warn('Could not load Puter models:', error); } }
+function bindModelPicker() { const select = document.querySelector('.model-picker-select'); if (!select || select.dataset.bound) return; select.dataset.bound = '1'; select.addEventListener('change', () => { MODEL = select.value; localStorage.setItem(MODEL_STORAGE_KEY, MODEL); }); }
 let system_prompt
 let chatHistory;
 let currentAppDir;
