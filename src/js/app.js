@@ -1,8 +1,8 @@
 // User-selectable AI model. The live Puter catalog is loaded at startup so the
 // builder does not force an expensive provider/model on every user.
 let MODEL = (() => {
-    try { return localStorage.getItem('puter_builder_model') || 'gemini-3.1-flash-lite'; }
-    catch (e) { return 'gemini-3.1-flash-lite'; }
+    try { return localStorage.getItem('puter_builder_model') || ''; }
+    catch (e) { return ''; }
 })();
 const MODEL_STORAGE_KEY = 'puter_builder_model';
 const MODEL_CATALOG = [];
@@ -12,7 +12,62 @@ function modelCostLabel(model) {
     if (cost.input === 0 && cost.output === 0) return 'FREE';
     if (cost.currency === 'usd-cents') {
         const input = Number(cost.input), output = Number(cost.output);
-        if (Number.isFinite(input) && Number.isFinite(output)) return '
+        if (Number.isFinite(input) && Number.isFinite(output)) return '$' + input + '/$' + output;
+    }
+    return '';
+}
+function modelDisplayName(model) {
+    return model?.name || model?.id || String(model);
+}
+function modelIsClaude(model) {
+    return /claude|anthropic/i.test(String(model?.id || model?.name || ''));
+}
+function modelSortScore(model) {
+    const id = String(model?.id || '').toLowerCase();
+    const name = String(model?.name || '').toLowerCase();
+    if (modelIsClaude(model)) return 1000;
+    if (id.endsWith(':free') || name.includes('free')) return 0;
+    if (id.includes('qwen') || id.includes('deepseek')) return 10;
+    if (id.includes('gemini')) return 20;
+    return 50;
+}
+async function initializeModelPicker() {
+    const select = document.querySelector('.model-picker-select');
+    if (!select || !window.puter?.ai?.listModels) return;
+    try {
+        const models = await puter.ai.listModels();
+        const usable = (Array.isArray(models) ? models : [])
+            .filter(m => m && m.id && !modelIsClaude(m))
+            .sort((a, b) => modelSortScore(a) - modelSortScore(b) || modelDisplayName(a).localeCompare(modelDisplayName(b)));
+        MODEL_CATALOG.length = 0; MODEL_CATALOG.push(...usable);
+        select.replaceChildren();
+        for (const model of usable) {
+            const option = document.createElement('option');
+            option.value = model.id;
+            option.textContent = modelDisplayName(model) + (modelCostLabel(model) ? ' · ' + modelCostLabel(model) : '');
+            select.appendChild(option);
+        }
+        const saved = (() => { try { return localStorage.getItem(MODEL_STORAGE_KEY); } catch (e) { return null; } })();
+        const selected = usable.find(m => m.id === saved) || usable.find(m => m.id === MODEL) || usable[0];
+        if (selected) {
+            MODEL = selected.id;
+            select.value = selected.id;
+            try { localStorage.setItem(MODEL_STORAGE_KEY, MODEL); } catch (e) {}
+        }
+    } catch (error) {
+        console.warn('Could not load Puter model catalog:', error);
+    }
+}
+function bindModelPicker() {
+    const select = document.querySelector('.model-picker-select');
+    if (!select || select.dataset.bound === 'true') return;
+    select.dataset.bound = 'true';
+    select.addEventListener('change', () => {
+        MODEL = select.value;
+        try { localStorage.setItem(MODEL_STORAGE_KEY, MODEL); } catch (e) {}
+    });
+}
+
 let system_prompt
 let chatHistory;
 let currentAppDir;
@@ -15077,3 +15132,8 @@ async function regenerateContinueSuggestions() {
     }
 }
 window.regenerateContinueSuggestions = regenerateContinueSuggestions;
+
+
+// Bind after all classic scripts are loaded and the picker element exists.
+bindModelPicker();
+initializeModelPicker();
