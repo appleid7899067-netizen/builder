@@ -6126,3 +6126,6 @@ html[data-theme="dark"] .feed-card:hover .feed-thumb {
     border-color: var(--border-strong);
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
 }
+
+/* Compact live Puter model picker. */
+.model-picker{display:inline-flex;align-items:center;gap:4px;margin-right:4px;max-width:190px}.model-picker-label{font-size:10px;font-weight:600;color:#777;user-select:none}.model-picker-select{max-width:165px;border:0;background:transparent;color:inherit;font:inherit;font-size:11px;padding:3px 18px 3px 2px;cursor:pointer;outline:none}.model-picker-select:disabled{opacity:.6;cursor:wait}html[data-theme="dark"] .model-picker-label{color:#aaa}@media(max-width:560px){.model-picker{max-width:135px}.model-picker-select{max-width:112px}}
