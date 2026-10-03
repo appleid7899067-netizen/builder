@@ -1,22 +1,4 @@
-let MODEL = (() => { try { return localStorage.getItem('puter_builder_model') || ''; } catch (e) { return ''; } })();
-const MODEL_STORAGE_KEY = 'puter_builder_model';
-async function initializeModelPicker() {
-    const select = document.querySelector('.model-picker-select');
-    if (!select || !window.puter?.ai?.listModels) return;
-    try {
-        const models = await puter.ai.listModels();
-        const usable = (Array.isArray(models) ? models : []).filter(m => m && m.id && !/claude|anthropic/i.test(String(m.id || m.name || ''))).sort((a,b) => (String(a.id).endsWith(':free') ? 0 : 1) - (String(b.id).endsWith(':free') ? 0 : 1) || String(a.name || a.id).localeCompare(String(b.name || b.id)));
-        select.replaceChildren(...usable.map(m => { const o=document.createElement('option'); o.value=m.id; o.textContent=(m.name || m.id) + ((m.cost && m.cost.input===0 && m.cost.output===0) ? ' · FREE' : ''); return o; }));
-        const saved=localStorage.getItem(MODEL_STORAGE_KEY), chosen=usable.find(m=>m.id===saved) || usable[0];
-        if (chosen) { MODEL=chosen.id; select.value=MODEL; localStorage.setItem(MODEL_STORAGE_KEY,MODEL); }
-    } catch (e) { console.warn('Could not load Puter models:', e); }
-}
-function bindModelPicker() {
-    const select=document.querySelector('.model-picker-select');
-    if (!select || select.dataset.bound) return;
-    select.dataset.bound='1';
-    select.addEventListener('change', () => { MODEL=select.value; localStorage.setItem(MODEL_STORAGE_KEY,MODEL); });
-}
+let MODEL = 'claude-opus-5-5';
 let system_prompt
 let chatHistory;
 let currentAppDir;
@@ -4054,7 +4036,7 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
                 // against the signal locally (abortableAwait) — otherwise an
                 // abort couldn't unstick a connection that dies mid-open.
                 const stream = await abortableAwait(puter.ai.chat(prepareHistoryForAI(turnSaveContext.chatHistory), {
-                    ...(MODEL ? { model: MODEL } : {}),
+                    model: MODEL,
                     tools: turnTools,
                     stream: true,
                     reasoning_effort: 'medium',
@@ -5021,7 +5003,3 @@ async function regenerateContinueSuggestions() {
     }
 }
 window.regenerateContinueSuggestions = regenerateContinueSuggestions;
-
-
-bindModelPicker();
-initializeModelPicker();
