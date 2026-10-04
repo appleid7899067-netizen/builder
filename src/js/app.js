@@ -1392,13 +1392,13 @@ async function clearChatMessages(chatId = currentChatId) {
                     .map(p => p.text || '')
                     .join(' ');
             }
-            return String(text || '').replace(/\\s+/g, ' ').trim();
+            return String(text || '').replace(/\s+/g, ' ').trim();
         })
         .filter(Boolean);
 
     // Skip low-signal acknowledgements so "F", "ok", etc. don't become the
     // only continuation context after a clear.
-    const lowSignal = /^(f|ff|ok|okay|yes|y|ครับ|ค่ะ|ใช่|ได้|ได้ครับ|ได้ค่ะ|ต่อ|ต่อครับ|ต่อค่ะ|ทำต่อ|ทำต่อครับ|ทำต่อค่ะ)[.!?\\s]*$/i;
+    const lowSignal = /^(f|ff|ok|okay|yes|y|ครับ|ค่ะ|ใช่|ได้|ได้ครับ|ได้ค่ะ|ต่อ|ต่อครับ|ต่อค่ะ|ทำต่อ|ทำต่อครับ|ทำต่อค่ะ)[.!?\s]*$/i;
     const substantive = userMessages.filter(t => !lowSignal.test(t));
     const recent = (substantive.length ? substantive : userMessages)
         .slice(-2)
@@ -1410,7 +1410,7 @@ async function clearChatMessages(chatId = currentChatId) {
         'Keep working on the same project and current goal. The project files are the source of truth; inspect them when details are needed.',
         recent.length ? 'Recent user intent:' : '',
         ...recent.map((t, i) => `${i + 1}. ${t}`)
-    ].filter(Boolean).join('\\n');
+    ].filter(Boolean).join('\n');
 
     // Keep the existing system prompt as-is, then add one compact hidden system
     // message. loadChat() already skips system messages when rebuilding the UI.
