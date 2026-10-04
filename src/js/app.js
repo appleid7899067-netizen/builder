@@ -463,7 +463,7 @@ async function saveCurrentChatUnlocked(context) {
     if (isCustomTitle) chatTitle = existing.title;
     else if (typeof pendingAiTitle === 'string') chatTitle = pendingAiTitle;
     else if (existing && existing.aiTitled) chatTitle = existing.title;
-    else chatTitle = existing?.title || generateChatTitle(context.chatHistory);
+    else chatTitle = generateChatTitle(context.chatHistory);
     const timestamp = new Date().toISOString();
 
     // The live preview globals (window.currentPreviewUrl/Path) describe whichever
