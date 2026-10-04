@@ -140,6 +140,8 @@ Example workflow:
 - Mark third todo in_progress
 - Generate script.js
 - Mark third todo completed (final TodoWrite call — every item is now checked)
+- Call publish_site with path set to the working directory so the live preview opens automatically
+- Call update_preview to verify the app runs cleanly in the live preview
 - Send the short final summary
 `
 }

@@ -5,16 +5,13 @@ const FREE_MODELS = [
     { id: 'nvidia/nemotron-3-ultra-550b-a55b:free', name: 'NVIDIA Nemotron 3 Ultra 550B · FREE', cost: { input: 0, output: 0 } },
     { id: 'nvidia/nemotron-3.5-lightning:free', name: 'NVIDIA Nemotron 3.5 Lightning · FREE', cost: { input: 0, output: 0 } },
     { id: 'nvidia/nemotron-3-super-120b-a12b:free', name: 'NVIDIA Nemotron 3 Super 120B · FREE', cost: { input: 0, output: 0 } },
-    { id: 'nvidia/nemotron-3.5-content-safety:free', name: 'NVIDIA Nemotron 3.5 Safety · FREE', cost: { input: 0, output: 0 } },
     { id: 'google/gemma-4-31b-it:free', name: 'Google Gemma 4 31B · FREE', cost: { input: 0, output: 0 } },
     { id: 'google/gemma-4-26b-a4b-it:free', name: 'Google Gemma 4 26B A4B · FREE', cost: { input: 0, output: 0 } },
-    { id: 'google/lyria-3-pro-preview', name: 'Google Lyria 3 Pro Preview · FREE', cost: { input: 0, output: 0 } },
-    { id: 'google/lyria-3-clip-preview', name: 'Google Lyria 3 Clip Preview · FREE', cost: { input: 0, output: 0 } },
-    { id: 'thinkingmachines/inkling:free', name: 'Thinking Machines Inkling · FREE', cost: { input: 0, output: 0 } },
-    { id: 'thinkingmachines/inkling-small:free', name: 'Thinking Machines Inkling Small · FREE', cost: { input: 0, output: 0 } },
+    { id: 'cohere/north-mini-code:free', name: 'Cohere North Mini Code · FREE', cost: { input: 0, output: 0 } },
     { id: 'poolside/laguna-s-2.1:free', name: 'Poolside Laguna S 2.1 · FREE', cost: { input: 0, output: 0 } },
     { id: 'poolside/laguna-xs-2.1:free', name: 'Poolside Laguna XS 2.1 · FREE', cost: { input: 0, output: 0 } },
-    { id: 'cohere/north-mini-code:free', name: 'Cohere North Mini Code · FREE', cost: { input: 0, output: 0 } },
+    { id: 'thinkingmachines/inkling:free', name: 'Thinking Machines Inkling · FREE', cost: { input: 0, output: 0 } },
+    { id: 'thinkingmachines/inkling-small:free', name: 'Thinking Machines Inkling Small · FREE', cost: { input: 0, output: 0 } },
     { id: 'dots-studio/dots-3-note-preview:free', name: 'Dots Studio Dots3-Note Preview · FREE', cost: { input: 0, output: 0 } },
     { id: 'inclusionai/ling-3.1-flash', name: 'InclusionAI Ling 3.1 Flash · FREE', cost: { input: 0, output: 0 } },
     { id: 'inclusionai/ling-3.0-flash-sante:free', name: 'InclusionAI Ling 3.0 Flash Sante · FREE', cost: { input: 0, output: 0 } },
@@ -4345,6 +4342,80 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
         // reloaded the preview mid-build, tracked a Build Completed, and told the
         // Issues panel its batch was done.
         const turnLive = turnSeq === _turnSeq && turnChatId === currentChatId;
+        if (!retryGaveUp && turnLive && !isAborted(abortController) && !activeTurnInterrupted && turnAppDir) {
+            try {
+                let publishDir = null;
+                try {
+                    await puter.fs.stat(`${turnAppDir}/index.html`);
+                    publishDir = turnAppDir;
+                } catch (_) {
+                    try {
+                        const entries = await puter.fs.readdir(turnAppDir);
+                        for (const entry of (entries || [])) {
+                            if (!entry || !entry.is_dir) continue;
+                            const subName = entry.name || '';
+                            if (!subName || subName.startsWith('.')) continue;
+                            const candidate = `${turnAppDir}/${subName}`;
+                            try {
+                                await puter.fs.stat(`${candidate}/index.html`);
+                                publishDir = candidate;
+                                break;
+                            } catch (__) { /* no index.html in this subdir */ }
+                        }
+                    } catch (__) { /* turnAppDir may not exist yet */ }
+                }
+
+                // Fallback for free/smaller models that output fenced ```html code blocks
+                // directly in chat text instead of calling the write tool.
+                if (!publishDir) {
+                    const hist = turnSaveContext.chatHistory || [];
+                    const lastMsg = hist[hist.length - 1];
+                    const lastText = (lastMsg && lastMsg.role === 'assistant' && typeof lastMsg.content === 'string')
+                        ? lastMsg.content : '';
+                    const htmlMatch = lastText.match(/```html\s*\n([\s\S]*?)```/i)
+                        || lastText.match(/(<!doctype html[\s\S]*?<\/html>)/i);
+                    if (htmlMatch && /<(html|head|body|div|main|section|canvas|script)\b/i.test(htmlMatch[1])) {
+                        let htmlCode = htmlMatch[1].trim();
+                        const cssMatch = lastText.match(/```css\s*\n([\s\S]*?)```/i);
+                        const jsMatch = lastText.match(/```(?:javascript|js)\s*\n([\s\S]*?)```/i);
+                        if (cssMatch && cssMatch[1].trim()) {
+                            const cssPath = `${turnAppDir}/styles.css`;
+                            await window.withFileLock(cssPath, () => window.writeFileVerified(cssPath, cssMatch[1].trim()));
+                            window.recordPreviewChange?.(cssPath);
+                            if (!/styles\.css/i.test(htmlCode) && /<\/head>/i.test(htmlCode)) {
+                                htmlCode = htmlCode.replace(/<\/head>/i, '<link rel="stylesheet" href="styles.css">\n</head>');
+                            }
+                        }
+                        if (jsMatch && jsMatch[1].trim()) {
+                            const jsPath = `${turnAppDir}/script.js`;
+                            await window.withFileLock(jsPath, () => window.writeFileVerified(jsPath, jsMatch[1].trim()));
+                            window.recordPreviewChange?.(jsPath);
+                            if (!/script\.js/i.test(htmlCode) && /<\/body>/i.test(htmlCode)) {
+                                htmlCode = htmlCode.replace(/<\/body>/i, '<script src="script.js"></script>\n</body>');
+                            }
+                        }
+                        const indexPath = `${turnAppDir}/index.html`;
+                        await window.withFileLock(indexPath, () => window.writeFileVerified(indexPath, htmlCode));
+                        window.markProjectModified?.('write', turnChatId);
+                        window.recordPreviewChange?.(indexPath);
+                        window.schedulePreviewRefresh?.();
+                        publishDir = turnAppDir;
+                    }
+                }
+
+                // Auto-open the live preview pane if index.html exists and the model
+                // finished the turn without calling publish_site.
+                if (publishDir && !window.currentPreviewUrl && turnSeq === _turnSeq && turnChatId === currentChatId) {
+                    await window.executeFunction('publish_site', { path: publishDir }, context || {
+                        currentChatId: turnChatId,
+                        appDir: turnAppDir,
+                        abortController,
+                    });
+                }
+            } catch (autoPreviewErr) {
+                console.warn('Auto-preview fallback skipped:', autoPreviewErr);
+            }
+        }
         if (!retryGaveUp && turnLive) {
             window.flushPreviewRefresh?.();
         }
