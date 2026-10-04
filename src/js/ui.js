@@ -138,7 +138,7 @@ function renderSkeleton() {
             h += `<div class="chat-input-message-actions">`;
                 h += `<button class="attachment-button" title="Attach files from your computer">${attachment_svg}</button>`;
                 h += `<input type="file" class="attachment-file-input" accept="${ATTACHMENT_ACCEPT}" multiple style="display:none">`;
-                h += `<div class="model-picker" title="Choose AI model"><span class="model-picker-label">AI</span><select class="model-picker-select" aria-label="Choose AI model"><option value="qwen/qwen3.8-flash">Qwen3.8 Flash</option></select></div>`;
+                h += `<div class="model-picker" title="Choose AI model"><span class="model-picker-label">AI</span><select class="model-picker-select" aria-label="Choose AI model"><option value="qwen/qwen3.8-27b:free">Qwen3.8 27B · FREE</option></select></div>`;
                 // The label flips to "Stop" while a turn runs (updateSendButtonState).
                 h += `<button class="send" disabled title="Send message" aria-label="Send message">${send_svg}</button>`;
             h += `</div>`;

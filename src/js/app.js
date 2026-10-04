@@ -1,5 +1,32 @@
 const MODEL_STORAGE_KEY = 'puter_builder_model';
+const FREE_MODELS = [
+    { id: 'qwen/qwen3.8-27b:free', name: 'Qwen3.8 27B · FREE', cost: { input: 0, output: 0 } },
+    { id: 'openrouter/free', name: 'OpenRouter Free Models Router · FREE', cost: { input: 0, output: 0 } },
+    { id: 'nvidia/nemotron-3-ultra-550b-a55b:free', name: 'NVIDIA Nemotron 3 Ultra 550B · FREE', cost: { input: 0, output: 0 } },
+    { id: 'nvidia/nemotron-3.5-lightning:free', name: 'NVIDIA Nemotron 3.5 Lightning · FREE', cost: { input: 0, output: 0 } },
+    { id: 'nvidia/nemotron-3-super-120b-a12b:free', name: 'NVIDIA Nemotron 3 Super 120B · FREE', cost: { input: 0, output: 0 } },
+    { id: 'nvidia/nemotron-3.5-content-safety:free', name: 'NVIDIA Nemotron 3.5 Safety · FREE', cost: { input: 0, output: 0 } },
+    { id: 'google/gemma-4-31b-it:free', name: 'Google Gemma 4 31B · FREE', cost: { input: 0, output: 0 } },
+    { id: 'google/gemma-4-26b-a4b-it:free', name: 'Google Gemma 4 26B A4B · FREE', cost: { input: 0, output: 0 } },
+    { id: 'google/lyria-3-pro-preview', name: 'Google Lyria 3 Pro Preview · FREE', cost: { input: 0, output: 0 } },
+    { id: 'google/lyria-3-clip-preview', name: 'Google Lyria 3 Clip Preview · FREE', cost: { input: 0, output: 0 } },
+    { id: 'thinkingmachines/inkling:free', name: 'Thinking Machines Inkling · FREE', cost: { input: 0, output: 0 } },
+    { id: 'thinkingmachines/inkling-small:free', name: 'Thinking Machines Inkling Small · FREE', cost: { input: 0, output: 0 } },
+    { id: 'poolside/laguna-s-2.1:free', name: 'Poolside Laguna S 2.1 · FREE', cost: { input: 0, output: 0 } },
+    { id: 'poolside/laguna-xs-2.1:free', name: 'Poolside Laguna XS 2.1 · FREE', cost: { input: 0, output: 0 } },
+    { id: 'cohere/north-mini-code:free', name: 'Cohere North Mini Code · FREE', cost: { input: 0, output: 0 } },
+    { id: 'dots-studio/dots-3-note-preview:free', name: 'Dots Studio Dots3-Note Preview · FREE', cost: { input: 0, output: 0 } },
+    { id: 'inclusionai/ling-3.1-flash', name: 'InclusionAI Ling 3.1 Flash · FREE', cost: { input: 0, output: 0 } },
+    { id: 'inclusionai/ling-3.0-flash-sante:free', name: 'InclusionAI Ling 3.0 Flash Sante · FREE', cost: { input: 0, output: 0 } },
+    { id: 'apodex/apodex-1.1-mini:free', name: 'Apodex 1.1 Mini · FREE', cost: { input: 0, output: 0 } },
+    { id: 'liquid/lfm-2.5-2.6b:free', name: 'LiquidAI LFM2.5 2.6B · FREE', cost: { input: 0, output: 0 } },
+];
+window.FREE_MODELS = FREE_MODELS;
+
 const QWEN_MODELS = [
+    // Free Qwen model first
+    { id: 'qwen/qwen3.8-27b:free', name: 'Qwen3.8 27B · FREE', cost: { input: 0, output: 0 } },
+
     // Primary Qwen models
     { id: 'qwen/qwen3.8-flash', name: 'Qwen3.8 Flash' },
     { id: 'qwen/qwen3.8-max', name: 'Qwen3.8 Max' },
@@ -20,7 +47,6 @@ const QWEN_MODELS = [
     { id: 'qwen/qwen3-8b', name: 'Qwen3 8B · Fast' },
 
     // 20 additional Qwen models
-    { id: 'qwen/qwen3.8-27b:free', name: 'Qwen3.8 27B · FREE', cost: { input: 0, output: 0 } },
     { id: 'qwen/qwen3.8-2.4t-a95b', name: 'Qwen3.8 2.4T A95B' },
     { id: 'qwen/qwen3.8-27b', name: 'Qwen3.8 27B' },
     { id: 'qwen/qwen3.7-max', name: 'Qwen3.7 Max' },
@@ -49,18 +75,41 @@ window.QWEN_MODELS = QWEN_MODELS;
 
 let MODEL = (() => {
     try {
-        return localStorage.getItem(MODEL_STORAGE_KEY) || QWEN_MODELS[0].id;
+        return localStorage.getItem(MODEL_STORAGE_KEY) || FREE_MODELS[0].id;
     } catch (e) {
-        return QWEN_MODELS[0].id;
+        return FREE_MODELS[0].id;
     }
 })();
+
+function isModelFree(m) {
+    if (!m) return false;
+    const id = String(m.id || '');
+    const name = String(m.name || '');
+    if (id.endsWith(':free') || id === 'openrouter/free' || /\bfree\b/i.test(name)) return true;
+    if (m.cost && m.cost.input === 0 && m.cost.output === 0) return true;
+    if (m.costs && m.costs.prompt === 0 && m.costs.completion === 0) return true;
+    if (m.costs && m.costs.prompt_tokens === 0 && m.costs.completion_tokens === 0) return true;
+    return false;
+}
+
+function modelSortRank(m) {
+    const id = String(m?.id || '').toLowerCase();
+    const name = String(m?.name || '').toLowerCase();
+    const free = isModelFree(m);
+    const isQwen = id.includes('qwen') || name.includes('qwen');
+    if (free && isQwen) return 0;
+    if (free) return 1;
+    if (isQwen) return 2;
+    return 3;
+}
 
 function renderModelPickerOptions(models) {
     const select = document.querySelector('.model-picker-select');
     if (!select) return;
     const seen = new Set();
     const list = [];
-    for (const m of [...QWEN_MODELS, ...(Array.isArray(models) ? models : [])]) {
+    const combined = [...FREE_MODELS, ...QWEN_MODELS, ...(Array.isArray(models) ? models : [])];
+    for (const m of combined) {
         if (!m || !m.id) continue;
         const id = String(m.id);
         if (/claude|anthropic/i.test(id + ' ' + String(m.name || ''))) continue;
@@ -70,12 +119,11 @@ function renderModelPickerOptions(models) {
         seen.add(normKey);
         list.push(m);
     }
+    list.sort((a, b) => modelSortRank(a) - modelSortRank(b));
     select.replaceChildren(...list.map(m => {
         const option = document.createElement('option');
         option.value = m.id;
-        const isFree = (m.cost && m.cost.input === 0 && m.cost.output === 0) ||
-            (m.costs && m.costs.prompt === 0 && m.costs.completion === 0) ||
-            String(m.id).endsWith(':free');
+        const isFree = isModelFree(m);
         const label = m.name || m.id;
         option.textContent = isFree && !/free/i.test(label) ? `${label} · FREE` : label;
         return option;
@@ -120,11 +168,13 @@ function bindModelPicker() {
     });
 }
 const FALLBACK_QWEN_MODELS = [
+    'qwen/qwen3.8-27b:free',
+    'openrouter/free',
+    'nvidia/nemotron-3-ultra-550b-a55b:free',
+    'google/gemma-4-31b-it:free',
     'qwen/qwen3.8-flash',
     'qwen/qwen3-coder-flash',
     'qwen/qwen3.7-flash',
-    'qwen/qwen3.5-plus',
-    'qwen/qwen3.8-max',
 ];
 
 function selectFallbackQwenModel(currentModel) {
