@@ -6142,21 +6142,22 @@ html[data-theme="dark"] .model-picker-select option{background:#1e2430;color:#f0
 
 /* ==========================================================================
    Bossnu Chat Refinement / Arena branch
-   Visual system: 60 / 30 / 10 + 8px spacing
-   This layer intentionally overrides chat presentation only. It does not
-   change DOM structure, message flow, model selection, or transport logic.
+   Deep Green Premium visual system: 60 / 30 / 10 + 8px spacing
+   CSS-only refinement. DOM, chat flow, model logic, transport, and tools stay intact.
    ========================================================================== */
 :root {
     --chat-space: 8px;
-    --chat-radius: 12px;
-    --chat-radius-sm: 8px;
-    --chat-bg: #f5f5f7;          /* 60% */
-    --chat-surface: #ffffff;     /* 30% */
-    --chat-accent: #8b78d8;      /* 10% */
-    --chat-text: #1d1b24;
-    --chat-text-2: #666270;
-    --chat-text-3: #94909e;
-    --chat-border: #e7e4ee;
+    --chat-radius: 16px;
+    --chat-radius-sm: 12px;
+    --chat-bg: #0a0e14;
+    --chat-surface: #151b22;
+    --chat-surface-2: #1b232d;
+    --chat-accent: #00e676;
+    --chat-accent-2: #a855f7;
+    --chat-text: #f4f7f5;
+    --chat-text-2: #cbd5e1;
+    --chat-text-3: #7f8b99;
+    --chat-border: #242d3d;
     --chat-ease: cubic-bezier(.22,.61,.36,1);
 }
 
@@ -6191,11 +6192,11 @@ body {
     color: var(--chat-text);
 }
 
-/* Typography hierarchy: readable body, restrained metadata, strong headings. */
+/* Typography hierarchy */
 .message {
     margin-bottom: 16px;
     font-size: 14px;
-    line-height: 1.65;
+    line-height: 1.6;
     letter-spacing: -0.005em;
 }
 
@@ -6211,7 +6212,7 @@ body {
 }
 
 .message-content p {
-    line-height: 1.65;
+    line-height: 1.6;
 }
 
 .message-content p + p {
@@ -6243,31 +6244,34 @@ body {
     border: 1px solid var(--chat-border);
     border-radius: 16px 16px 6px 16px;
     color: var(--chat-text);
-    box-shadow: 0 2px 8px rgba(28, 24, 45, 0.04);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .16);
 }
 
 .ai-message .message-content {
     padding-left: 0;
     padding-right: 0;
-    color: var(--chat-text);
+    color: var(--chat-text-2);
 }
 
-/* Status / progress stays visually subordinate to the answer. */
+/* Status remains quiet so the answer is the visual focus. */
 .progress-message {
     padding: 8px 12px;
     gap: 8px;
     border-radius: var(--chat-radius-sm);
     font-size: 12px;
     line-height: 1.45;
+    background: rgba(27, 35, 45, .78);
+    border-color: var(--chat-border);
+    color: var(--chat-text-2);
 }
 
-/* Composer: one stable surface, 8px rhythm, consistent corners. */
+/* Composer: stable surface, 8px rhythm, subtle green focus. */
 .chat-input {
     background: var(--chat-surface);
     border: 1px solid var(--chat-border);
-    border-radius: 16px;
+    border-radius: var(--chat-radius);
     margin-bottom: 16px;
-    box-shadow: 0 8px 28px rgba(38, 30, 65, 0.07);
+    box-shadow: 0 10px 32px rgba(0, 0, 0, .28);
     transition:
         border-color 180ms var(--chat-ease),
         box-shadow 180ms var(--chat-ease),
@@ -6275,10 +6279,10 @@ body {
 }
 
 .chat-input:has(.chat-input-message:focus):not(.disabled) {
-    border-color: color-mix(in srgb, var(--chat-accent) 55%, var(--chat-border));
+    border-color: rgba(0, 230, 118, .58);
     box-shadow:
-        0 8px 28px rgba(38, 30, 65, 0.08),
-        0 0 0 3px color-mix(in srgb, var(--chat-accent) 12%, transparent);
+        0 10px 32px rgba(0, 0, 0, .30),
+        0 0 0 3px rgba(0, 230, 118, .10);
 }
 
 .chat-input-message {
@@ -6317,6 +6321,7 @@ body {
     transition:
         transform 160ms var(--chat-ease),
         background-color 160ms var(--chat-ease),
+        box-shadow 160ms var(--chat-ease),
         opacity 160ms var(--chat-ease);
 }
 
@@ -6326,25 +6331,25 @@ body {
 }
 
 .attachment-button:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--chat-accent) 9%, transparent);
+    background: rgba(0, 230, 118, .09);
     color: var(--chat-accent);
 }
 
 .send {
-    background: var(--chat-accent);
-    box-shadow: 0 4px 12px color-mix(in srgb, var(--chat-accent) 24%, transparent);
+    background: linear-gradient(135deg, var(--chat-accent), var(--chat-accent-2));
+    box-shadow: 0 4px 14px rgba(0, 230, 118, .18);
 }
 
 .send:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--chat-accent) 88%, #000);
+    box-shadow: 0 6px 18px rgba(0, 230, 118, .24);
 }
 
 .send:active:not(:disabled),
 .attachment-button:active:not(:disabled) {
-    transform: translateY(0) scale(.96);
+    transform: translateY(0) scale(.98);
 }
 
-/* Model picker belongs to the utility layer, not the primary visual layer. */
+/* Model picker stays utility-sized, never competing with Send. */
 .model-picker {
     gap: 4px;
     margin-right: 0;
@@ -6364,9 +6369,16 @@ body {
     font-size: 11px;
     border-radius: var(--chat-radius-sm);
     padding: 5px 20px 5px 6px;
+    color: var(--chat-text-2);
+    background: transparent;
 }
 
-/* Suggestion chips follow the same 8px grid and radius language. */
+.model-picker-select option {
+    background: #151b22;
+    color: #f4f7f5;
+}
+
+/* Suggestions follow the same spacing/radius language. */
 .chat-suggestions {
     gap: 8px;
     margin-bottom: 8px;
@@ -6377,7 +6389,7 @@ body {
     border-radius: var(--chat-radius-sm);
 }
 
-/* Small interaction polish: avoid layout jumps and keep motion purposeful. */
+/* Motion: transform + opacity only for entrance, avoiding layout animation. */
 .chat .message {
     animation: bossnu-chat-enter 180ms var(--chat-ease) both;
 }
@@ -6395,7 +6407,8 @@ body {
 
 @media (hover: hover) {
     .user-message .message-content:hover {
-        box-shadow: 0 4px 14px rgba(38, 30, 65, 0.06);
+        transform: translateY(-1px);
+        box-shadow: 0 6px 20px rgba(0, 0, 0, .20);
     }
 }
 
@@ -6412,33 +6425,27 @@ body {
     }
 }
 
-/* Dark 60/30/10: keep the same hierarchy, only swap the palette. */
-html[data-theme="dark"] {
-    --chat-bg: #0f1117;
-    --chat-surface: #181b24;
-    --chat-accent: #a78bfa;
-    --chat-text: #f2eff8;
-    --chat-text-2: #aaa5b7;
-    --chat-text-3: #777284;
-    --chat-border: #292635;
-}
+/* Mobile: preserve the existing compact chat width and touch targets. */
+@media (max-width: 560px) {
+    .chat {
+        padding-left: 12px;
+        padding-right: 12px;
+    }
 
-html[data-theme="dark"] .chat-input,
-html[data-theme="dark"] .user-message .message-content {
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
-}
+    .chat-input {
+        border-radius: 14px;
+    }
 
-html[data-theme="dark"] .message-content h1,
-html[data-theme="dark"] .message-content h2,
-html[data-theme="dark"] .message-content h3,
-html[data-theme="dark"] .chat-header h1 {
-    color: var(--chat-text);
-}
+    .chat-input-message {
+        padding-left: 12px;
+        padding-right: 12px;
+    }
 
-html[data-theme="dark"] .chat-input-message {
-    color: var(--chat-text);
-}
+    .model-picker {
+        max-width: 145px;
+    }
 
-html[data-theme="dark"] .attachment-button:hover:not(:disabled) {
-    background: rgba(167, 139, 250, 0.12);
+    .model-picker-select {
+        max-width: 120px;
+    }
 }
