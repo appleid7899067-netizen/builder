@@ -1137,6 +1137,86 @@ function htmlUnescape(text) {
         .replaceAll("&amp;", "&");
 }
 
+// Streaming assistant messages used to re-parse and re-highlight the entire
+// accumulated reply for every tiny text delta. Besides batching those renders to
+// animation frames (handleMessageStream.js), keep the already-finished markdown
+// blocks rendered and only parse the still-open tail. A blank-line token is a
+// stable block boundary; marked includes the equivalent trailing blank line in
+// table / block-HTML tokens, so those are safe to commit too. At the end of the
+// stream we deliberately parse the whole source once: this resolves markdown
+// references defined later in the reply and guarantees byte-for-byte parity
+// with the normal saved-message renderer.
+function createStreamingMarkdownRenderer() {
+    let committedSource = '';
+    let committedHtml = '';
+
+    function renderEscaped(source) {
+        if (!source) return '';
+        return marked.parse(source).replace(/<a href=/g, '<a target="_blank" href=');
+    }
+
+    function findStablePrefixLength(source) {
+        if (!source || typeof marked.lexer !== 'function') return 0;
+        let tokens;
+        try {
+            tokens = marked.lexer(source);
+        } catch (e) {
+            return 0;
+        }
+        if (!Array.isArray(tokens)) return 0;
+
+        let offset = 0;
+        let stableEnd = 0;
+        for (let i = 0; i < tokens.length; i++) {
+            const token = tokens[i];
+            const raw = token && typeof token.raw === 'string' ? token.raw : '';
+            offset += raw.length;
+
+            // `space` is marked's explicit blank-line separator between blocks.
+            if (token && token.type === 'space' && i > 0) {
+                stableEnd = offset;
+            // The block lexer consumes the blank separator into these tokens
+            // instead of emitting a separate `space` token.
+            } else if (token && (token.type === 'table' || token.type === 'html')
+                && /(?:\r?\n)[ \t]*(?:\r?\n)+$/.test(raw)) {
+                stableEnd = offset;
+            }
+        }
+
+        // Token raw spans should cover the full input. If a future marked version
+        // changes that contract, fall back to parsing the complete tail instead
+        // of risking a split in the middle of a markdown token.
+        return offset === source.length ? Math.min(stableEnd, source.length) : 0;
+    }
+
+    return {
+        render(source, final = false) {
+            const escaped = escapeMarkdownSource(typeof source === 'string' ? source : String(source ?? ''));
+            if (final) {
+                committedSource = escaped;
+                committedHtml = renderEscaped(escaped);
+                return committedHtml;
+            }
+
+            // This renderer is append-only during a stream. Reset defensively if
+            // a caller reuses it for a different message or rewrites its prefix.
+            if (!escaped.startsWith(committedSource)) {
+                committedSource = '';
+                committedHtml = '';
+            }
+
+            const stableEnd = Math.max(committedSource.length, findStablePrefixLength(escaped));
+            const newlyStable = escaped.slice(committedSource.length, stableEnd);
+            if (newlyStable) {
+                committedHtml += renderEscaped(newlyStable);
+                committedSource = escaped.slice(0, stableEnd);
+            }
+
+            return committedHtml + renderEscaped(escaped.slice(stableEnd));
+        },
+    };
+}
+
 function generateChatId() {
     return 'chat_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
 }

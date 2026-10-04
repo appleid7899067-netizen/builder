@@ -164,26 +164,40 @@ function bindModelPicker() {
         } catch (e) { /* storage blocked */ }
     });
 }
-const FALLBACK_QWEN_MODELS = [
-    'qwen/qwen3.8-27b:free',
-    'openrouter/free',
-    'nvidia/nemotron-3-ultra-550b-a55b:free',
-    'google/gemma-4-31b-it:free',
-    'qwen/qwen3.8-flash',
-    'qwen/qwen3-coder-flash',
-    'qwen/qwen3.7-flash',
-];
+// Rotate through eight explicitly free picker models on transient failures. Keep
+// this list derived from the same source the picker shows, and never silently
+// fall back to a paid model. These entries are all advertised as zero-cost.
+const FALLBACK_FREE_MODELS = FREE_MODELS
+    .filter(model => model && model.id && isModelFree(model))
+    .slice(0, 8)
+    .map(model => model.id);
+let _fallbackFreeModelCursor = 0;
 
-function selectFallbackQwenModel(currentModel) {
-    const next = FALLBACK_QWEN_MODELS.find(id => id !== currentModel) || FALLBACK_QWEN_MODELS[0];
-    if (!next) return currentModel;
-    MODEL = next;
-    const select = document.querySelector('.model-picker-select');
-    if (select) select.value = MODEL;
-    try {
-        localStorage.setItem(MODEL_STORAGE_KEY, MODEL);
-    } catch (e) { /* storage blocked */ }
-    return MODEL;
+function selectFallbackFreeModel(currentModel, attemptedModels) {
+    if (FALLBACK_FREE_MODELS.length === 0) return null;
+    const currentIndex = FALLBACK_FREE_MODELS.indexOf(currentModel);
+    const start = currentIndex >= 0
+        ? (currentIndex + 1) % FALLBACK_FREE_MODELS.length
+        : _fallbackFreeModelCursor;
+
+    // Walk forward in a stable round-robin order, skipping the selected model
+    // and any model already tried during this turn. This avoids the old behavior
+    // where `.find(id !== currentModel)` bounced between the first two entries.
+    for (let offset = 0; offset < FALLBACK_FREE_MODELS.length; offset++) {
+        const index = (start + offset) % FALLBACK_FREE_MODELS.length;
+        const next = FALLBACK_FREE_MODELS[index];
+        if (next === currentModel || attemptedModels?.has(next)) continue;
+
+        MODEL = next;
+        _fallbackFreeModelCursor = (index + 1) % FALLBACK_FREE_MODELS.length;
+        const select = document.querySelector('.model-picker-select');
+        if (select) select.value = MODEL;
+        try {
+            localStorage.setItem(MODEL_STORAGE_KEY, MODEL);
+        } catch (e) { /* storage blocked */ }
+        return MODEL;
+    }
+    return null;
 }
 window.initializeModelPicker = initializeModelPicker;
 window.bindModelPicker = bindModelPicker;
@@ -3327,7 +3341,10 @@ window.resumeBuild = resumeBuild;
 // (prepareResumeHistory repairs the tail) so completed rounds and file-writes are
 // never redone. Non-transient failures, user Stop, and chat-switches are NOT
 // retried — they propagate to the existing handling unchanged.
-const MAX_TURN_RETRIES = 4;
+// Allow eight retries, enough to traverse all eight free fallbacks when the
+// user's initial model is outside that list. The per-turn attempted set may
+// exhaust the unique free models sooner when the initial model was already free.
+const MAX_TURN_RETRIES = 8;
 
 // ===== transient-retry-classifier (start) =====
 // True only for failures a retry can plausibly fix. Allowlist-based: the default
@@ -4100,6 +4117,9 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
     // counts retries used this turn; `retryGaveUp` is set once they're exhausted,
     // which routes the turn to the calm resume banner instead of an error card.
     let attempt = 0;
+    // Models attempted across every round and retry in this turn. A failed model
+    // is never chosen again until the next user turn starts a fresh set.
+    const attemptedModelIds = new Set();
     let retryGaveUp = false;
     // Transient failures that strike while the page is HIDDEN (phone locked /
     // app backgrounded) don't consume the retry budget — the service didn't
@@ -4371,6 +4391,8 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
             // from "a stale turn unwound late while a NEWER turn is streaming"
             // — a late unwind must not clear the live turn's watchdog flag.
             const attemptController = abortController;
+            const attemptModel = MODEL;
+            attemptedModelIds.add(attemptModel);
             try {
                 // Mark the attempt live for the background-freeze watchdog
                 // (mobile-lifecycle-keepalive above): it only ever aborts an
@@ -4381,7 +4403,7 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
                 // against the signal locally (abortableAwait) — otherwise an
                 // abort couldn't unstick a connection that dies mid-open.
                 const stream = await abortableAwait(puter.ai.chat(prepareHistoryForAI(turnSaveContext.chatHistory), {
-                    model: MODEL,
+                    model: attemptModel,
                     tools: turnTools,
                     stream: true,
                     reasoning_effort: 'medium',
@@ -4450,6 +4472,15 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
                     window.track?.('Build Retry Exhausted');
                     break;
                 }
+                const nextModel = selectFallbackFreeModel(attemptModel, attemptedModelIds);
+                if (!nextModel) {
+                    // Every free fallback has already failed this turn. Avoid
+                    // cycling back to a provider/model that we know just failed.
+                    clearRetryStatus();
+                    retryGaveUp = true;
+                    window.track?.('Build Retry Exhausted', { models_tried: attemptedModelIds.size });
+                    break;
+                }
                 const delayMs = Math.round(retryBackoffBaseMs(attempt) * (0.85 + Math.random() * 0.3));
                 // Failures while the page is hidden are counted separately (see
                 // hiddenRetries above) so a backgrounded phone can't burn the
@@ -4457,7 +4488,6 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
                 const hiddenRetry = document.visibilityState === 'hidden'
                     && hiddenRetries < MAX_HIDDEN_TURN_RETRIES;
                 if (hiddenRetry) hiddenRetries++; else attempt++;
-                selectFallbackQwenModel(MODEL);
                 showRetryStatus(Math.max(attempt, 1), MAX_TURN_RETRIES);
                 window.track?.('Build Retry', { attempt, ...(hiddenRetry && { hidden: true }) });
                 const proceed = await waitForRetry(delayMs, turnChatId);

@@ -671,16 +671,16 @@ async function buildProbeTargets(baseUrl, dir, changedPaths) {
     }
     rels.sort((a, b) => _extPriority(a) - _extPriority(b));
 
-    const targets = [];
-    for (const rel of rels) {
-        if (targets.length >= CAP) break;
+    // Reading these small verification files serially made preview refresh time
+    // scale with the number of changed files. There are at most six, so fetch
+    // their expected contents concurrently and preserve the priority order.
+    return Promise.all(rels.slice(0, CAP).map(async (rel) => {
         let expected;
         try { expected = await puter.fs.read(dir + '/' + rel).then(b => b.text()); }
-        catch (e) { continue; } // deleted / unreadable / binary
+        catch (e) { return null; } // deleted / unreadable / binary
         const url = baseUrl + rel.split('/').map(encodeURIComponent).join('/');
-        targets.push({ url, expected: (expected || '').trim() });
-    }
-    return targets;
+        return { url, expected: (expected || '').trim() };
+    })).then(targets => targets.filter(Boolean));
 }
 
 // Per-request timeout for a probe fetch, so a single stalled request can't block
@@ -708,20 +708,36 @@ async function probeFilesFresh(targets, mySeq, opts) {
     const fresh = new Set();
     while (Date.now() - start < timeout) {
         if (mySeq !== _previewRefreshSeq) return false; // superseded
-        for (const t of targets) {
-            if (fresh.has(t.url)) continue;
-            let cur;
+        const pending = targets.filter(t => !fresh.has(t.url));
+        // Check the remaining files concurrently. The old serial loop paid one
+        // network round-trip per file on every poll, so six changed files could
+        // multiply the CDN wait by six. Keep a local race as well as
+        // AbortSignal.timeout: older WebViews may not support the latter.
+        const remainingMs = Math.max(1, timeout - (Date.now() - start));
+        const observations = await Promise.all(pending.map(async (t) => {
+            let timeoutId = null;
             try {
-                const resp = await fetch(bustedUrl(t.url), { cache: 'no-store', signal: _probeAbortSignal(5000) });
-                cur = await resp.text();
-            } catch (e) { cur = undefined; }
-            if (mySeq !== _previewRefreshSeq) return false;
-            if (typeof cur === 'string') {
-                const trimmed = cur.trim();
-                if (trimmed === t.expected) fresh.add(t.url);
-                else if (!initial.has(t.url)) initial.set(t.url, trimmed);
-                else if (trimmed !== initial.get(t.url)) fresh.add(t.url);
+                const request = fetch(bustedUrl(t.url), {
+                    cache: 'no-store',
+                    signal: _probeAbortSignal(Math.min(5000, remainingMs)),
+                }).then(resp => resp.text());
+                const timedOut = new Promise(resolve => {
+                    timeoutId = setTimeout(() => resolve(undefined), Math.min(5000, remainingMs));
+                });
+                return { target: t, content: await Promise.race([request, timedOut]) };
+            } catch (e) {
+                return { target: t, content: undefined };
+            } finally {
+                if (timeoutId !== null) clearTimeout(timeoutId);
             }
+        }));
+        if (mySeq !== _previewRefreshSeq) return false;
+        for (const { target, content } of observations) {
+            if (typeof content !== 'string') continue;
+            const trimmed = content.trim();
+            if (trimmed === target.expected) fresh.add(target.url);
+            else if (!initial.has(target.url)) initial.set(target.url, trimmed);
+            else if (trimmed !== initial.get(target.url)) fresh.add(target.url);
         }
         if (fresh.size >= targets.length) return true;
         await new Promise(r => setTimeout(r, interval));
@@ -893,10 +909,10 @@ async function refreshPreviewWhenReady() {
     const $frame = $('.preview-frame');
     const baseUrl = window.currentPreviewUrl;
     if (!$frame.length || !baseUrl) return;
-    // The project this refresh belongs to. Read once, here: the wait below is
-    // ten seconds or more, and a load of another chat can reassign the global
-    // before it ends (loadChat only tears the pane down when the target has no
-    // preview of its own).
+    // The project this refresh belongs to. Read once, here: the CDN readiness
+    // probe can remain in flight while a stale edge catches up, and a load of
+    // another chat can reassign the global before it ends (loadChat only tears
+    // the pane down when the target has no preview of its own).
     const ownerChatId = currentChatId;
 
     // Guard against overlapping refreshes / chat switches — only the latest wins.
@@ -972,34 +988,18 @@ async function runPreviewRefresh($frame, baseUrl, ownerChatId, seq) {
     }
     if (seq !== _previewRefreshSeq) return; // superseded while reading
 
-    // Hard floor on the propagation wait: never reload until at least
-    // MIN_PROPAGATION_DELAY_MS has elapsed since the origin re-sync, regardless of
-    // how the probe turns out (fast confirm, full timeout, or nothing to probe at
-    // all). puter.site only serves freshly-synced files from the edge after its
-    // cache cycle turns over, so a probe that reports "fresh" early — or the
-    // no-probe path — must not let us reload before the change has reliably
-    // propagated. Measured from here, just after the re-sync, so it is a true
-    // post-sync settling window.
-    const MIN_PROPAGATION_DELAY_MS = 10000;
-    const waitStart = Date.now();
-
+    // A positive content match is the readiness signal, so reload as soon as
+    // the edge serves the expected files — do not add the old unconditional
+    // 10-second settling delay after the probe already proved the deploy is live.
+    // When a host cannot be probed, or no local text files are available to
+    // compare, reload immediately rather than leaving the preview looking stuck
+    // through a delay that cannot establish readiness anyway. The bounded probe
+    // still waits up to 22 seconds on a cache that has not propagated yet, then
+    // reloads as a best-effort fallback.
     if (canProbe && targets.length > 0) {
-        // The origin was just re-synced, but puter.site caches each file for ~20s
-        // (Cache-Control: max-age=20) and the edge ignores our cache-bust query,
-        // so the freshly-synced content can take up to a full cache cycle to
-        // surface at the edge. Wait long enough to catch it before reloading —
-        // otherwise we'd reload stale and not refresh again until the next turn.
-        await probeFilesFresh(targets, seq, { interval: 700, timeout: 22000 });
+        await probeFilesFresh(targets, seq, { interval: 500, timeout: 22000 });
     }
     if (seq !== _previewRefreshSeq) return; // superseded during the probe
-
-    // Top up to the minimum delay: add back whatever the probe (or the no-probe
-    // path) did not already consume, so the total settling time is never under
-    // the floor — this is the "10s regardless of any logic" guarantee.
-    const waited = Date.now() - waitStart;
-    if (waited < MIN_PROPAGATION_DELAY_MS) {
-        await new Promise(r => setTimeout(r, MIN_PROPAGATION_DELAY_MS - waited));
-    }
 
     // Bail if a newer reload/refresh/chat-switch happened, or the live preview
     // URL changed under us — never reload the iframe to a now-stale target.

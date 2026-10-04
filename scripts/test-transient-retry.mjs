@@ -50,6 +50,30 @@ const { isTransientTurnError, retryBackoffBaseMs } = new Function(
     APP.slice(clsA, clsB) + '\nreturn { isTransientTurnError, retryBackoffBaseMs };'
 )(extractErrorText);
 
+// Evaluate the real eight-model fallback selector with the real picker list.
+const freeA = APP.indexOf('const FREE_MODELS = [');
+const freeB = APP.indexOf('window.FREE_MODELS = FREE_MODELS;', freeA);
+const isFreeA = APP.indexOf('function isModelFree(m) {');
+const isFreeB = APP.indexOf('\n}', isFreeA) + 2;
+const fallbackA = APP.indexOf('// Rotate through eight explicitly free picker models');
+const fallbackB = APP.indexOf('window.initializeModelPicker = initializeModelPicker;', fallbackA);
+if ([freeA, freeB, isFreeA, isFreeB, fallbackA, fallbackB].some(i => i < 0)) {
+    throw new Error('could not extract the free-model fallback selector');
+}
+const picker = { value: '' };
+const stored = new Map();
+const fallbackSource = [
+    APP.slice(freeA, freeB),
+    APP.slice(isFreeA, isFreeB),
+    'const MODEL_STORAGE_KEY = "puter_builder_model"; let MODEL = "paid/selected";',
+    APP.slice(fallbackA, fallbackB),
+    'return { pool: FALLBACK_FREE_MODELS, freeModels: FREE_MODELS, isFree: isModelFree, select: selectFallbackFreeModel, model: () => MODEL, cursor: () => _fallbackFreeModelCursor };',
+].join(String.fromCharCode(10));
+const fallback = new Function('document', 'localStorage', fallbackSource)(
+    { querySelector: () => picker },
+    { setItem: (key, value) => stored.set(key, value) },
+);
+
 // === Transient errors: MUST retry ===========================================
 const TRANSIENT = [
     new Error('Overloaded'),
@@ -115,6 +139,35 @@ check('backoff(4) capped at 8s', retryBackoffBaseMs(4) === 8000);
 check('backoff(10) capped at 8s', retryBackoffBaseMs(10) === 8000);
 check('backoff monotonic non-decreasing', [0,1,2,3,4,5].every((n,i,a) => i === 0 || retryBackoffBaseMs(a[i]) >= retryBackoffBaseMs(a[i-1])));
 
+// === Free-model fallback rotation ===========================================
+const expectedFreePool = fallback.freeModels.filter(fallback.isFree).slice(0, 8).map(model => model.id);
+check('fallback pool contains eight models', fallback.pool.length === 8);
+check('fallback pool is the first eight picker entries marked free',
+    JSON.stringify(fallback.pool) === JSON.stringify(expectedFreePool));
+check('fallback pool contains only models advertised as free',
+    fallback.pool.every(id => fallback.freeModels.some(model => model.id === id && fallback.isFree(model))));
+const attemptedModels = new Set(['paid/selected']);
+const rotatedModels = [];
+for (let i = 0; i < fallback.pool.length; i++) {
+    const next = fallback.select(fallback.model(), attemptedModels);
+    rotatedModels.push(next);
+    if (next) attemptedModels.add(next);
+    check(`fallback rotation ${i + 1} selects a fresh free model`, next === fallback.pool[i]);
+    check(`fallback rotation ${i + 1} updates the picker and saved preference`,
+        picker.value === next && stored.get('puter_builder_model') === next);
+}
+check('one turn can try all eight fallback models without repetition',
+    rotatedModels.length === 8 && new Set(rotatedModels).size === 8);
+check('fallback returns null after all models have been tried',
+    fallback.select(fallback.model(), attemptedModels) === null);
+const alreadyTriedMidPool = new Set([fallback.pool[2]]);
+check('rotation resumes immediately after the current model',
+    fallback.select(fallback.pool[2], alreadyTriedMidPool) === fallback.pool[3]);
+check('rotation wraps from the last model to the first untried model',
+    fallback.select(fallback.pool[7], new Set(fallback.pool.slice(1))) === fallback.pool[0]);
+check('rotation skips previously attempted models',
+    fallback.select(fallback.pool[3], new Set(fallback.pool.slice(0, 5))) === fallback.pool[5]);
+
 // === Structural invariants of the retry loop in sendChatMessage =============
 // Slice from sendChatMessage to the next top-level function declaration (nested
 // functions inside it are indented, so a column-0 `function` marks the end).
@@ -127,7 +180,16 @@ check('sendChatMessage slice is bounded and non-trivial', SEND.length > 500 && S
 check('retry loop gates on the transient classifier', SEND.includes('isTransientTurnError(streamError)'));
 check('retry resumes from checkpointed history (prepareResumeHistory)', /prepareResumeHistory\(turnSaveContext\.chatHistory\)/.test(SEND));
 check('retry is capped by MAX_TURN_RETRIES', SEND.includes('attempt >= MAX_TURN_RETRIES'));
-check('MAX_TURN_RETRIES is defined', /const MAX_TURN_RETRIES = \d+/.test(APP));
+check('MAX_TURN_RETRIES permits up to eight model retries', /const MAX_TURN_RETRIES = 8;/.test(APP));
+check('the model attempted on every API call is recorded once for the turn',
+    SEND.includes('const attemptedModelIds = new Set()')
+    && SEND.includes('const attemptModel = MODEL;')
+    && SEND.includes('attemptedModelIds.add(attemptModel)')
+    && SEND.includes('model: attemptModel'));
+check('transient retries select a fresh free model and skip attempted ones',
+    SEND.includes('selectFallbackFreeModel(attemptModel, attemptedModelIds)')
+    && SEND.indexOf('selectFallbackFreeModel(attemptModel, attemptedModelIds)')
+        > SEND.indexOf('if (!active || !isTransientTurnError(streamError))'));
 check('retry NEVER fires on user stop / chat-switch (active guard)',
     SEND.includes('!shouldStop') && SEND.includes('!activeTurnInterrupted')
     && SEND.includes('!isAborted(abortController)'));
