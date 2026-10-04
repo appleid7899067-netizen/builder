@@ -1492,6 +1492,38 @@ async function clearNextChatMessages(chatId = currentChatId) {
 }
 window.clearNextChatMessages = clearNextChatMessages;
 
+function initChatHistoryBatchButton() {
+    if ($('.chat-history-clear-batch').length || !$('.chat.chat-current').length) return;
+    const $button = $('<button type="button" class="chat-history-clear-batch" aria-label="ล้าง 10 ข้อความ"><span>ล้าง 10 ข้อความ</span></button>');
+    $button.css({
+        display: 'none',
+        width: '100%',
+        minHeight: '34px',
+        padding: '6px 12px',
+        border: '0',
+        background: 'transparent',
+        color: 'var(--chat-text-2, #8b8b8b)',
+        font: 'inherit',
+        fontSize: '12px',
+        cursor: 'pointer'
+    });
+    $('.chat.chat-current').prepend($button);
+    $button.on('click', async function() {
+        $(this).prop('disabled', true);
+        try { await window.clearNextChatMessages?.(); }
+        finally { $(this).prop('disabled', false); window.updateChatHistoryBatchButton?.(); }
+    });
+    window.updateChatHistoryBatchButton = function() {
+        const count = $('.chat-box > .message').length;
+        $button.toggle(count > 0);
+        $button.find('span').text(count > 0 ? 'ล้าง 10 ข้อความ · เหลือ ' + count : 'ล้างข้อความหมดแล้ว');
+    };
+    window.updateChatHistoryBatchButton();
+}
+window.initChatHistoryBatchButton = initChatHistoryBatchButton;
+$(function() { initChatHistoryBatchButton(); });
+
+
 
 const _deletedChatIds = new Set();
 
