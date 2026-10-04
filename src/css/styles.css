@@ -6522,3 +6522,11 @@ body::before {
         transform: rotate(-8deg) scale(1.12);
     }
 }
+
+
+/* SILELO mascot hero: large cartoon lion mark */
+.chat-tagline { position: relative; min-height: 210px; flex-direction: column; gap: 10px; }
+.chat-tagline-logo { width: 180px; height: 180px; border-radius: 38px; background: rgba(15,20,28,.72); box-shadow: 0 0 70px rgba(0,230,118,.10), 0 0 35px rgba(168,85,247,.10); }
+.chat-tagline-icon { width: 164px; height: 164px; object-fit: contain; }
+.chat-tagline-text { margin-top: 2px; }
+@media (max-width: 560px) { .chat-tagline { min-height: 170px; } .chat-tagline-logo { width: 145px; height: 145px; border-radius: 30px; } .chat-tagline-icon { width: 132px; height: 132px; } }
