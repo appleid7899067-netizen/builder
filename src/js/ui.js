@@ -72,6 +72,70 @@ function renderStarterPrompts() {
 }
 window.renderStarterPrompts = renderStarterPrompts;
 
+// Compact, Grok-style history control. This is UI-only: the full chat history
+// remains persisted exactly as before. Older messages are visually collapsed while
+// the latest exchange stays readable; the existing clear/compact flow remains
+// responsible for reducing model context when the user explicitly clears history.
+let chatHistoryCollapsed = true;
+const CHAT_HISTORY_VISIBLE_MESSAGES = 6;
+
+function updateChatHistoryCollapse() {
+    const $box = $('.chat-box');
+    const $control = $('.chat-history-collapse');
+    if (!$box.length || !$control.length) return;
+
+    const $messages = $box.children('.message');
+    const total = $messages.length;
+    const hiddenCount = Math.max(0, total - CHAT_HISTORY_VISIBLE_MESSAGES);
+
+    if (hiddenCount === 0) {
+        $control.prop('hidden', true).removeClass('is-open');
+        $messages.removeClass('history-collapsed');
+        return;
+    }
+
+    $control.prop('hidden', false).toggleClass('is-open', !chatHistoryCollapsed);
+    $control.find('.chat-history-collapse-count').text(
+        chatHistoryCollapsed ? 'Show previous ' + hiddenCount + ' messages' : 'Hide previous messages'
+    );
+
+    $messages.removeClass('history-collapsed');
+    if (chatHistoryCollapsed) {
+        $messages.slice(0, hiddenCount).addClass('history-collapsed');
+    }
+}
+
+function initChatHistoryCollapse() {
+    if ($('.chat-history-collapse').length) return;
+    const $control = $('<button type="button" class="chat-history-collapse" aria-expanded="false" hidden>' +
+        '<span class="chat-history-collapse-count">Show previous messages</span>' +
+        '<span class="chat-history-collapse-chevron" aria-hidden="true">⌄</span>' +
+        '</button>');
+
+    // The control lives directly below the app toolbar and above the conversation,
+    // so it behaves like a native chat surface element rather than another card.
+    $('.chat.chat-current').prepend($control);
+
+    $control.on('click', () => {
+        chatHistoryCollapsed = !chatHistoryCollapsed;
+        $control.attr('aria-expanded', String(!chatHistoryCollapsed));
+        updateChatHistoryCollapse();
+        if (!chatHistoryCollapsed) {
+            const box = $('.chat-box')[0];
+            if (box) requestAnimationFrame(() => { box.scrollTop = 0; });
+        }
+    });
+
+    const box = $('.chat-box')[0];
+    if (box && window.MutationObserver) {
+        const observer = new MutationObserver(() => updateChatHistoryCollapse());
+        observer.observe(box, { childList: true });
+    }
+    updateChatHistoryCollapse();
+}
+window.updateChatHistoryCollapse = updateChatHistoryCollapse;
+window.initChatHistoryCollapse = initChatHistoryCollapse;
+
 function renderSkeleton() {
     let h = "";
 
@@ -201,6 +265,8 @@ function renderSkeleton() {
 
     // append the chat window to the body
     $('body').append(h);
+
+    initChatHistoryCollapse();
 
     // Remember the default tagline copy so the greeting reconciler can restore it
     // if a personalised greeting needs to be reverted (see applyHomeGreeting).
