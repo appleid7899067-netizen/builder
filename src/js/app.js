@@ -438,7 +438,8 @@ async function saveCurrentChatUnlocked(context) {
     // has been swapped (loadChat) or reset (new_chat), which would otherwise
     // make this guard wrongly skip a save whose own history has real messages.
     const hasNonSystemMessages = context.chatHistory.some(msg => msg.role !== 'system');
-    if (!hasNonSystemMessages) {
+    const hasCompactContext = context.chatHistory.some(msg => msg.role === 'system' && msg._compactContext === true);
+    if (!hasNonSystemMessages && !hasCompactContext) {
         return;
     }
     
@@ -462,7 +463,7 @@ async function saveCurrentChatUnlocked(context) {
     if (isCustomTitle) chatTitle = existing.title;
     else if (typeof pendingAiTitle === 'string') chatTitle = pendingAiTitle;
     else if (existing && existing.aiTitled) chatTitle = existing.title;
-    else chatTitle = generateChatTitle(context.chatHistory);
+    else chatTitle = existing?.title || generateChatTitle(context.chatHistory);
     const timestamp = new Date().toISOString();
 
     // The live preview globals (window.currentPreviewUrl/Path) describe whichever
@@ -1369,11 +1370,80 @@ async function loadChat(chatId, { urlMode = 'push' } = {}) {
     }
 }
 
-// Chats deleted this session. A save for one of these is dropped on the floor
-// (see saveCurrentChat): a turn that was still running in the deleted project
-// unwinds AFTER the files are gone, and its mandatory end-of-turn save used to
-// write chat-history/<id>.json back and unshift the entry into the index — the
-// project rose from the dead in the sidebar, with its history but no files.
+// Clear the visible conversation without creating a new project.
+// The project files, preview, title and chat id stay intact. We keep only a tiny
+// deterministic continuation capsule (no extra AI call), so the next request can
+// continue the same work without resending the entire old transcript.
+async function clearChatMessages(chatId = currentChatId) {
+    if (!chatId || chatId !== currentChatId) return false;
+
+    terminateActiveTurn();
+    resetChatUIForSwitch();
+
+    const history = Array.isArray(chatHistory) ? chatHistory : [];
+    const userMessages = history
+        .filter(m => m && m.role === 'user')
+        .map(m => {
+            let text = '';
+            if (typeof m.content === 'string') text = m.content;
+            else if (Array.isArray(m.content)) {
+                text = m.content
+                    .filter(p => p && p.type === 'text')
+                    .map(p => p.text || '')
+                    .join(' ');
+            }
+            return String(text || '').replace(/\\s+/g, ' ').trim();
+        })
+        .filter(Boolean);
+
+    // Skip low-signal acknowledgements so "F", "ok", etc. don't become the
+    // only continuation context after a clear.
+    const lowSignal = /^(f|ff|ok|okay|yes|y|ครับ|ค่ะ|ใช่|ได้|ได้ครับ|ได้ค่ะ|ต่อ|ต่อครับ|ต่อค่ะ|ทำต่อ|ทำต่อครับ|ทำต่อค่ะ)[.!?\\s]*$/i;
+    const substantive = userMessages.filter(t => !lowSignal.test(t));
+    const recent = (substantive.length ? substantive : userMessages)
+        .slice(-2)
+        .map(t => t.slice(-600));
+
+    const contextText = [
+        'CONTINUATION CONTEXT',
+        'The visible conversation was cleared to reduce prompt/token usage.',
+        'Keep working on the same project and current goal. The project files are the source of truth; inspect them when details are needed.',
+        recent.length ? 'Recent user intent:' : '',
+        ...recent.map((t, i) => `${i + 1}. ${t}`)
+    ].filter(Boolean).join('\\n');
+
+    // Keep the existing system prompt as-is, then add one compact hidden system
+    // message. loadChat() already skips system messages when rebuilding the UI.
+    const baseSystem = history.find(m => m && m.role === 'system') || system_prompt;
+    chatHistory = [
+        baseSystem,
+        { role: 'system', _compactContext: true, content: contextText }
+    ];
+
+    $('.chat').addClass('active');
+    $('.chat-box').empty();
+    window.currentTodos = null;
+    $('.chat-box .todo-list').remove();
+
+    try {
+        await saveCurrentChat({ currentChatId: chatId, chatHistory });
+        updateChatHistorySidebar();
+        window.showToast?.('ล้างข้อความแล้ว • โปรเจกต์เดิมและบริบทสั้น ๆ ยังอยู่ คุยต่อได้เลย', {
+            type: 'success',
+            key: 'chat-cleared'
+        });
+        return true;
+    } catch (e) {
+        console.error('Clear chat messages failed:', e);
+        window.showToast?.('ล้างข้อความไม่สำเร็จ — ข้อมูลเดิมยังอยู่', {
+            type: 'error',
+            key: 'chat-clear-failed'
+        });
+        return false;
+    }
+}
+window.clearChatMessages = clearChatMessages;
+
 const _deletedChatIds = new Set();
 
 async function deleteChat(chatId) {
