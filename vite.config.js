@@ -199,6 +199,7 @@ function classicBundle() {
       }));
     },
     async closeBundle() {
+      fs.mkdirSync(OUT_DIR, { recursive: true });
       // The Puter runtime script — the "Made with Puter" badge plus the
       // click-to-edit bridge — loaded by every generated app via an absolute
       // <script src> URL (see src/runtime.js), so it must ship at stable,
@@ -790,7 +791,9 @@ export default defineConfig({
   plugins: [classicBundle(), featuredFeedPlugin(), pwaPlugin(), seoPagesPlugin()],
   server: {
     port: 8080,
-    open: true,
+    host: true,
+    allowedHosts: true,
+    open: false,
   },
   build: {
     outDir: path.resolve(__dirname, 'dist'),

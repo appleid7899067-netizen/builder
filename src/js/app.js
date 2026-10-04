@@ -1,4 +1,145 @@
-let MODEL = 'claude-opus-5-5';
+const MODEL_STORAGE_KEY = 'puter_builder_model';
+const QWEN_MODELS = [
+    // Primary Qwen models
+    { id: 'qwen/qwen3.8-flash', name: 'Qwen3.8 Flash' },
+    { id: 'qwen/qwen3.8-max', name: 'Qwen3.8 Max' },
+    { id: 'qwen/qwen3.8-max-prime', name: 'Qwen3.8 Max Prime' },
+    { id: 'qwen/qwen3-coder-480b-a35b-instruct', name: 'Qwen3 Coder 480B A35B' },
+    { id: 'qwen/qwen3-coder-30b-a3b-instruct', name: 'Qwen3 Coder 30B A3B' },
+    { id: 'qwen/qwen3-coder-plus', name: 'Qwen3 Coder Plus' },
+    { id: 'qwen/qwen3-coder-flash', name: 'Qwen3 Coder Flash' },
+    { id: 'qwen/qwen3-coder-next', name: 'Qwen3 Coder Next' },
+    { id: 'qwen/qwen3.7-flash', name: 'Qwen3.7 Flash · Vision' },
+    { id: 'qwen/qwen3.7-plus', name: 'Qwen3.7 Plus' },
+    { id: 'qwen/qwen3-vl-flash', name: 'Qwen3-VL Flash · Vision' },
+    { id: 'qwen/qwen3-vl-30b-a3b-instruct', name: 'Qwen3 VL 30B · Vision' },
+    { id: 'qwen/qwen3-omni-30b-a3b-instruct', name: 'Qwen3 Omni 30B · Audio/Video' },
+    { id: 'qwen/qwen3.8-omni-flash', name: 'Qwen3.8 OmniFlash · Audio/Video' },
+    { id: 'qwen/qwen3.5-omni-flash', name: 'Qwen3.5 Omni Flash' },
+    { id: 'qwen/qwen3-32b', name: 'Qwen3 32B' },
+    { id: 'qwen/qwen3-8b', name: 'Qwen3 8B · Fast' },
+
+    // 20 additional Qwen models
+    { id: 'qwen/qwen3.8-27b:free', name: 'Qwen3.8 27B · FREE', cost: { input: 0, output: 0 } },
+    { id: 'qwen/qwen3.8-2.4t-a95b', name: 'Qwen3.8 2.4T A95B' },
+    { id: 'qwen/qwen3.8-27b', name: 'Qwen3.8 27B' },
+    { id: 'qwen/qwen3.7-max', name: 'Qwen3.7 Max' },
+    { id: 'qwen/qwen3.6-flash', name: 'Qwen3.6 Flash' },
+    { id: 'qwen/qwen3.6-plus', name: 'Qwen3.6 Plus' },
+    { id: 'qwen/qwen3.6-35b-a3b', name: 'Qwen3.6 35B A3B' },
+    { id: 'qwen/qwen3.6-max-preview', name: 'Qwen3.6 Max Preview' },
+    { id: 'qwen/qwen3.6-27b', name: 'Qwen3.6 27B' },
+    { id: 'qwen/qwen3.5-plus-2026-04-20', name: 'Qwen3.5 Plus · 2026-04-20' },
+    { id: 'qwen/qwen3.5-plus-2026-02-15', name: 'Qwen3.5 Plus · 2026-02-15' },
+    { id: 'qwen/qwen3.5-122b-a10b', name: 'Qwen3.5 122B A10B' },
+    { id: 'qwen/qwen3.5-397b-a17b', name: 'Qwen3.5 397B A17B' },
+    { id: 'qwen/qwen3.5-35b-a3b', name: 'Qwen3.5 35B A3B' },
+    { id: 'qwen/qwen3.5-27b', name: 'Qwen3.5 27B' },
+    { id: 'qwen/qwen3-vl-235b-a22b-instruct', name: 'Qwen3 VL 235B A22B · Vision' },
+    { id: 'qwen/qwen3-max', name: 'Qwen3 Max' },
+    { id: 'qwen/qwen-plus-2025-07-28', name: 'Qwen Plus 0728' },
+    { id: 'qwen/qwen-plus-2025-07-28:thinking', name: 'Qwen Plus 0728 · Thinking' },
+    { id: 'qwen/qwen3-14b', name: 'Qwen3 14B' },
+    { id: 'qwen/qwen3-235b-a22b', name: 'Qwen3 235B A22B' },
+    { id: 'qwen/qwen-2.5-coder-32b-instruct', name: 'Qwen2.5 Coder 32B Instruct' },
+    { id: 'qwen/qwen-2.5-7b-instruct', name: 'Qwen2.5 7B Instruct' },
+    { id: 'qwen/qwen-2.5-72b-instruct', name: 'Qwen2.5 72B Instruct' },
+];
+window.QWEN_MODELS = QWEN_MODELS;
+
+let MODEL = (() => {
+    try {
+        return localStorage.getItem(MODEL_STORAGE_KEY) || QWEN_MODELS[0].id;
+    } catch (e) {
+        return QWEN_MODELS[0].id;
+    }
+})();
+
+function renderModelPickerOptions(models) {
+    const select = document.querySelector('.model-picker-select');
+    if (!select) return;
+    const seen = new Set();
+    const list = [];
+    for (const m of [...QWEN_MODELS, ...(Array.isArray(models) ? models : [])]) {
+        if (!m || !m.id) continue;
+        const id = String(m.id);
+        if (/claude|anthropic/i.test(id + ' ' + String(m.name || ''))) continue;
+        const normKey = id.replace(/^(openrouter:|alibaba:)/i, '').toLowerCase();
+        if (seen.has(id) || seen.has(normKey)) continue;
+        seen.add(id);
+        seen.add(normKey);
+        list.push(m);
+    }
+    select.replaceChildren(...list.map(m => {
+        const option = document.createElement('option');
+        option.value = m.id;
+        const isFree = (m.cost && m.cost.input === 0 && m.cost.output === 0) ||
+            (m.costs && m.costs.prompt === 0 && m.costs.completion === 0) ||
+            String(m.id).endsWith(':free');
+        const label = m.name || m.id;
+        option.textContent = isFree && !/free/i.test(label) ? `${label} · FREE` : label;
+        return option;
+    }));
+    let saved = null;
+    try {
+        saved = localStorage.getItem(MODEL_STORAGE_KEY);
+    } catch (e) { /* storage blocked */ }
+    const chosen = list.find(m => m.id === saved) || list.find(m => m.id === MODEL) || list[0];
+    if (chosen) {
+        MODEL = chosen.id;
+        select.value = MODEL;
+        try {
+            localStorage.setItem(MODEL_STORAGE_KEY, MODEL);
+        } catch (e) { /* storage blocked */ }
+    }
+}
+
+async function initializeModelPicker() {
+    const select = document.querySelector('.model-picker-select');
+    if (!select) return;
+    renderModelPickerOptions([]);
+    if (!window.puter?.ai?.listModels) return;
+    try {
+        const liveModels = await puter.ai.listModels();
+        renderModelPickerOptions(liveModels);
+    } catch (e) {
+        console.warn('Could not load Puter models:', e);
+    }
+}
+
+function bindModelPicker() {
+    const select = document.querySelector('.model-picker-select');
+    if (!select || select.dataset.bound) return;
+    select.dataset.bound = '1';
+    select.addEventListener('change', () => {
+        if (!select.value) return;
+        MODEL = select.value;
+        try {
+            localStorage.setItem(MODEL_STORAGE_KEY, MODEL);
+        } catch (e) { /* storage blocked */ }
+    });
+}
+const FALLBACK_QWEN_MODELS = [
+    'qwen/qwen3.8-flash',
+    'qwen/qwen3-coder-flash',
+    'qwen/qwen3.7-flash',
+    'qwen/qwen3.5-plus',
+    'qwen/qwen3.8-max',
+];
+
+function selectFallbackQwenModel(currentModel) {
+    const next = FALLBACK_QWEN_MODELS.find(id => id !== currentModel) || FALLBACK_QWEN_MODELS[0];
+    if (!next) return currentModel;
+    MODEL = next;
+    const select = document.querySelector('.model-picker-select');
+    if (select) select.value = MODEL;
+    try {
+        localStorage.setItem(MODEL_STORAGE_KEY, MODEL);
+    } catch (e) { /* storage blocked */ }
+    return MODEL;
+}
+window.initializeModelPicker = initializeModelPicker;
+window.bindModelPicker = bindModelPicker;
 let system_prompt
 let chatHistory;
 let currentAppDir;
@@ -4112,6 +4253,7 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
                 const hiddenRetry = document.visibilityState === 'hidden'
                     && hiddenRetries < MAX_HIDDEN_TURN_RETRIES;
                 if (hiddenRetry) hiddenRetries++; else attempt++;
+                selectFallbackQwenModel(MODEL);
                 showRetryStatus(Math.max(attempt, 1), MAX_TURN_RETRIES);
                 window.track?.('Build Retry', { attempt, ...(hiddenRetry && { hidden: true }) });
                 const proceed = await waitForRetry(delayMs, turnChatId);
@@ -4395,7 +4537,7 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
 
 // A fast, cheap model is plenty for short follow-up ideas (and keeps this off
 // the critical path of the main, more capable build model).
-const SUGGESTION_MODEL = 'anthropic/claude-haiku-4-5';
+const SUGGESTION_MODEL = 'qwen/qwen3.8-flash';
 
 // Bumped whenever suggestions are cleared or a new generation starts, so an
 // older in-flight generation can detect it has been superseded and bow out.

@@ -6126,3 +6126,15 @@ html[data-theme="dark"] .feed-card:hover .feed-thumb {
     border-color: var(--border-strong);
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
 }
+
+/* Compact live Puter & Qwen model picker. */
+.model-picker{display:inline-flex;align-items:center;gap:4px;margin-left:auto;margin-right:4px;max-width:210px}
+.model-picker + .send{margin-left:0}
+.model-picker-label{font-size:10px;font-weight:600;color:#777;user-select:none}
+.model-picker-select{max-width:185px;border:0;background:transparent;color:inherit;font:inherit;font-size:11px;padding:3px 18px 3px 2px;cursor:pointer;outline:none;text-overflow:ellipsis}
+.model-picker-select option{background:#fff;color:#222}
+.model-picker-select:disabled{opacity:.6;cursor:wait}
+html[data-theme="dark"] .model-picker-label{color:#aaa}
+html[data-theme="dark"] .model-picker-select option{background:#1e2430;color:#f0f3f8}
+@media(max-width:560px){.model-picker{max-width:145px}.model-picker-select{max-width:120px}}
+
