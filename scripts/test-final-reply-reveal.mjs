@@ -20,17 +20,27 @@ function setup({ activeTodos = true, preRendered = [] } = {}) {
     // Rendered assistant bubbles, in order: { id, content }.
     const rendered = preRendered.map(id => ({ id, content: '(from reload)' }));
     let idSeq = 0;
+    let htmlWrites = 0;
+    const markdownRenders = [];
+    let frameSeq = 0;
+    const frames = new Map();
     const bubble = (entry) => ({
         length: 1,
-        find: () => ({ html(h) { entry.content = h; } }),
+        find: () => ({ html(h) { htmlWrites++; entry.content = h; } }),
         attr(name, value) { if (name === 'data-message-id') entry.id = value; },
     });
     const env = {
         AbortController, DOMException,
         currentChatId: 'one', shouldStop: false,
-        window: {},
+        window: {
+            requestAnimationFrame(callback) { const id = ++frameSeq; frames.set(id, callback); return id; },
+            cancelAnimationFrame(id) { frames.delete(id); },
+        },
         marked: { parse: s => s },
         escapeMarkdownSource: s => s,
+        createStreamingMarkdownRenderer() {
+            return { render(source, final = false) { markdownRenders.push({ source, final }); return source; } };
+        },
         $(selector) {
             if (selector === undefined) return { length: 0, find: () => ({ html() {} }), attr() {} };
             const m = /^\.chat-box \.message\[data-message-id="(.*)"\]$/.exec(selector);
@@ -69,7 +79,16 @@ function setup({ activeTodos = true, preRendered = [] } = {}) {
         currentChatId: env.currentChatId, abortController: new AbortController(),
         chatHistory: history, currentMessage: null, currentMessageContent: '',
     });
-    return { env, rendered, context };
+    return {
+        env, rendered, context,
+        markdownRenders,
+        get htmlWrites() { return htmlWrites; },
+        paintFrame() {
+            const callbacks = Array.from(frames.values());
+            frames.clear();
+            callbacks.forEach(callback => callback());
+        },
+    };
 }
 async function* chunks(...items) { yield* items; }
 const textOf = rendered => rendered.map(r => r.content);
@@ -185,4 +204,41 @@ for (const end of ['abort', 'stale']) {
     await h.env.handleMessageStream(chunks({ type: 'text', text: 'Reply' }), c);
     assert.deepEqual(order, ['reveal', 'stopSpinner'], 'reveal precedes the dots teardown');
     console.log('ok   - reply is revealed before the dots fade out');
+}
+
+// 10. A burst of token-sized deltas is painted once per frame, and the final
+// flush lands any text still queued when the stream drains.
+{
+    const h = setup({ activeTodos: false });
+    let signalAtGate;
+    const atGate = new Promise(resolve => { signalAtGate = resolve; });
+    let releaseGate;
+    const gate = new Promise(resolve => { releaseGate = resolve; });
+    async function* response() {
+        yield { type: 'text', text: 'Fast ' };
+        yield { type: 'text', text: 'stream ' };
+        yield { type: 'text', text: 'updates' };
+        signalAtGate();
+        await gate;
+        yield { type: 'usage', usage: {} };
+    }
+
+    const c = h.context([{ role: 'user', content: 'show me' }]);
+    const running = h.env.handleMessageStream(response(), c);
+    await atGate;
+    assert.equal(h.htmlWrites, 0, 'deltas wait for the scheduled paint rather than each writing HTML');
+    assert.equal(h.markdownRenders.length, 0, 'markdown is not parsed for each individual delta');
+    h.paintFrame();
+    assert.equal(h.htmlWrites, 1, 'all current deltas are painted together');
+    assert.equal(h.markdownRenders.length, 1, 'one incremental markdown render ran for the frame');
+    assert.equal(h.markdownRenders[0].final, false);
+    assert.equal(h.rendered[0].content, 'Fast stream updates');
+
+    releaseGate();
+    await running;
+    assert.equal(h.htmlWrites, 2, 'the end-of-stream flush paints the final source once');
+    assert.equal(h.markdownRenders.length, 2);
+    assert.equal(h.markdownRenders[1].final, true, 'the final full markdown pass resolves any late references');
+    assert.equal(h.rendered[0].content, 'Fast stream updates', 'no final text is lost');
+    console.log('ok   - streamed token bursts are batched and the final render is flushed');
 }

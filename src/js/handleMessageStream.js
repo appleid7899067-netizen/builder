@@ -229,6 +229,61 @@ async function handleMessageStream(stream, context) {
         thinkingPreview?.remove();
         thinkingPreview = null;
     };
+
+    // Stream updates arrive far more often than the browser can paint. Coalesce
+    // them to one render per animation frame, and let the markdown renderer keep
+    // already-finished blocks instead of parsing the entire reply every time.
+    // A final full render is flushed before a handoff / turn end so references
+    // defined later in the message resolve exactly like a restored chat.
+    let streamedBubble = null;
+    let streamedMarkdown = null;
+    let pendingMessageRender = null;
+    let textIndicatorShown = false;
+    const markdownRendererFor = (bubble) => {
+        if (streamedBubble !== bubble) {
+            streamedBubble = bubble;
+            streamedMarkdown = typeof createStreamingMarkdownRenderer === 'function'
+                ? createStreamingMarkdownRenderer()
+                : { render: (source) => marked.parse(escapeMarkdownSource(source))
+                    .replace(/<a href=/g, '<a target="_blank" href=') };
+        }
+        return streamedMarkdown;
+    };
+    const cancelMessageRender = () => {
+        if (!pendingMessageRender) return;
+        if (pendingMessageRender.isFrame) {
+            try { window.cancelAnimationFrame?.(pendingMessageRender.id); } catch (_) {}
+        } else {
+            clearTimeout(pendingMessageRender.id);
+        }
+        pendingMessageRender = null;
+    };
+    const paintMessage = (bubble, final = false) => {
+        if (!bubble || !bubble.length || context.currentMessage !== bubble) return;
+        if (isAborted(context.abortController) || isStaleTurn(context)) return;
+        const renderer = markdownRendererFor(bubble);
+        bubble.find('.message-content').html(renderer.render(context.currentMessageContent, final));
+        autoScrollTrigger(context);
+    };
+    const scheduleMessageRender = () => {
+        const bubble = context.currentMessage;
+        if (!bubble || !bubble.length || pendingMessageRender) return;
+        const paint = () => {
+            pendingMessageRender = null;
+            paintMessage(bubble);
+        };
+        if (typeof window.requestAnimationFrame === 'function') {
+            pendingMessageRender = { id: window.requestAnimationFrame(paint), isFrame: true };
+        } else {
+            // Old WebViews / minimal test DOMs may not implement rAF.
+            pendingMessageRender = { id: setTimeout(paint, 32), isFrame: false };
+        }
+    };
+    const flushMessageRender = () => {
+        cancelMessageRender();
+        const bubble = context.currentMessage;
+        if (bubble && bubble.length) paintMessage(bubble, true);
+    };
     try {
         // Abort-aware iteration: puter.ai.chat ignores the signal option, so this
         // race is what actually makes an abort take effect while the stream is
@@ -237,6 +292,7 @@ async function handleMessageStream(stream, context) {
             // Bail if the request was aborted OR the user has since switched chats —
             // in either case nothing from this turn should render into the live chat.
             if (isAborted(context.abortController) || isStaleTurn(context)) {
+                cancelMessageRender();
                 return;
             }
 
@@ -280,42 +336,37 @@ async function handleMessageStream(stream, context) {
 
                 // Only render when there is a bubble to render into. While the
                 // checklist suppresses narration, currentMessage is an EMPTY jQuery
-                // and .html() is a no-op — but its argument was still evaluated, so
-                // the whole accumulated message was re-parsed (and its fenced code
-                // re-highlighted) on every delta for nothing.
-                if (context.currentMessage.length) {
-                    context.currentMessage.find('.message-content').html(
-                        marked.parse(escapeMarkdownSource(context.currentMessageContent))
-                        .replace(/<a href=/g, '<a target="_blank" href=')
-                    );
-                }
+                // and there is no reason to parse or highlight its hidden text.
+                // Visible text is coalesced to one incremental markdown render per
+                // animation frame (see the helpers above), rather than one full
+                // message re-parse per network delta.
+                if (context.currentMessage.length) scheduleMessageRender();
 
                 // Keep the thinking dots visible as a trailing indicator beneath the
-                // streaming bubble. Previously a text chunk REMOVED the dots
-                // (stopSpinnerStub), so once the model finished narrating and went
-                // quiet to reason about its next tool call there was no activity
-                // indicator at all — a "dead zone" that looked stuck even though the
-                // request was still in flight (esp. on follow-up turns that don't use
-                // a TodoWrite checklist). showSpinner() is idempotent — it reuses an
-                // existing spinner (no per-delta DOM churn, strictly less than the old
-                // per-delta .remove()) and self-suppresses while a checklist item is
-                // in progress (hasRunningTodo), since its shimmer is the indicator
-                // then. The dots are torn down the instant the whole turn's
-                // generation ends (recurser block below) and on abort/error/turn-reset,
-                // so they never linger past completion.
-                showSpinner();
-
-                autoScrollTrigger(context);
+                // streaming bubble. The spinner is idempotent, so show it once per
+                // stream round instead of querying the DOM for every tiny text delta;
+                // a tool handoff resets this flag before the next round.
+                if (!textIndicatorShown) {
+                    showSpinner();
+                    textIndicatorShown = true;
+                }
             }
             if (completion.type === "usage") {
                 recordUsageChunk(context, completion);
             }
             if (completion.type === "tool_use") {
+                // Paint the last narration delta before saving / moving the
+                // spinner; otherwise a pending animation-frame callback could be
+                // cancelled by the handoff and leave the bubble visibly behind.
+                flushMessageRender();
                 clearThinking();
                 startSpinnerStub();
 
-                // Save before and after a tool call incase the user quits
+                // Save before and after a tool call in case the user quits.
                 saveCurrentMessage(context);
+                streamedBubble = null;
+                streamedMarkdown = null;
+                textIndicatorShown = false;
                 const result = await handleToolCalls(completion, true, context);
                 saveCurrentMessage(context);
                 if (result.error || shouldStop) {
@@ -323,12 +374,24 @@ async function handleMessageStream(stream, context) {
                 }
             }
         }
+    } catch (error) {
+        // A failed/aborted stream must not leave a queued paint behind to mutate
+        // a bubble after sendChatMessage has removed it or reset the chat.
+        cancelMessageRender();
+        throw error;
     } finally {
         // Includes stream errors, Stop, navigation, retries and reasoning-only
         // responses, even when the stream never emits another chunk.
         clearThinking();
     }
-    if (isAborted(context.abortController) || isStaleTurn(context)) return;
+    if (isAborted(context.abortController) || isStaleTurn(context)) {
+        cancelMessageRender();
+        return;
+    }
+    // Guarantee the final visible text has landed before saveCurrentMessage
+    // assigns its history id / clears the active-bubble handle. The `final`
+    // render also reconciles reference-style markdown against later definitions.
+    flushMessageRender();
     if (recurser) {
         // The top-level stream has drained — the entire turn (every recursive
         // round via handleToolCalls) is done generating. Tear down the trailing
