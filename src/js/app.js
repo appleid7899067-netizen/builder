@@ -3012,8 +3012,10 @@ function new_chat({ updateUrl = true } = {}) {
         window._authInitDone = true;
     }
     
-    // Reset input and button state
+    // Reset input and button state. Starter-card selection belongs to this
+    // landing session only; don't imply the next empty project inherited it.
     $('.chat-input-message').val('').prop('disabled', false);
+    $('.chat-starter-chip').removeClass('selected');
     $('.attachment-button').prop('disabled', false);
     $('.send').prop('disabled', true);
 

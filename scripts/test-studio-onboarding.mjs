@@ -140,6 +140,8 @@ check('reduced-motion preference is respected by studio cards and controls',
     /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.home-brief-apply \{ transition: none; \}/.test(CSS));
 check('new project composer restores the studio-specific placeholder',
     APP.includes('What should we build together? Describe the idea, audience, or outcome…'));
+check('starting a fresh project clears the previous blueprint highlight',
+    /function new_chat\([\s\S]*?\.chat-starter-chip'\)\.removeClass\('selected'\)/.test(APP));
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);
