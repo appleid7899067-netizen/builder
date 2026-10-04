@@ -1466,7 +1466,13 @@ async function clearNextChatMessages(chatId = currentChatId) {
         return false;
     }
 
-    const removeSet = new Set(removableIndexes.slice(0, 10));
+    // Keep one conversation message so the normal chat saver persists the batch clear.
+    const batchSize = Math.min(10, Math.max(0, removableIndexes.length - 1));
+    if (batchSize === 0) {
+        window.showToast?.('เหลือข้อความสุดท้ายแล้ว', { type: 'info', key: 'chat-clear-batch-last' });
+        return false;
+    }
+    const removeSet = new Set(removableIndexes.slice(0, batchSize));
     const removed = removeSet.size;
     chatHistory = history.filter((_, i) => !removeSet.has(i));
 
