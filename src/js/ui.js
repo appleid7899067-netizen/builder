@@ -4,29 +4,48 @@
 // Labels are short (the chip text); prompts are the full request. All static
 // and app-authored.
 const STARTER_PROMPTS = [
-    { label: 'To-do list app', prompt: 'Build a clean to-do list app where I can add tasks, mark them complete, and delete them, with everything saved between visits. Add priorities, deadlines, categories, search, sidebar, import/export, and dark mode support.' },
-    { label: 'Portfolio site', prompt: 'Build a modern personal portfolio site with a hero section, an about section, a projects grid, and a contact form. Add a testimonials section, a skills section, a contact form, a dark mode toggle.' },
-    { label: 'Pomodoro timer', prompt: 'Build a Pomodoro focus timer with start, pause, and reset controls, automatic work and break intervals, and a count of completed sessions. Add a dark mode toggle, a sound notification for breaks, and a settings menu.' },
-    { label: 'Expense tracker', prompt: 'Build an expense tracker where I can log expenses with a category and amount, see a running total, and view a chart of spending by category.' },
-    { label: 'Landing page', prompt: 'Build a sleek product landing page with a hero, feature highlights, a pricing section, and a call-to-action button.' },
-    { label: 'Weather app', prompt: 'Build a weather app where I can search for a city and see the current conditions and a multi-day forecast.' },
-    { label: 'Solitaire game', prompt: 'Build a Klondike solitaire card game with drag-and-drop cards, a draw pile, four suit foundations, automatic win detection, and a new-game button. Include smooth animations for dealing, moving, and flipping cards, and a celebratory winning animation. Add hint and undo functionality. Add sound effects for card shuffling, dealing, and flipping.' },
-    { label: 'Markdown notes', prompt: 'Build a markdown notes app with a list of notes, a live side-by-side editor and preview, full-text search, and everything saved between visits. Add a formatting toolbar above the editor with buttons for bold, italic, headings, links, lists, and code blocks.' },
-    { label: 'Habit tracker', prompt: 'Build a habit tracker where I can add daily habits, check them off each day, see a calendar grid of my streaks, and keep my progress saved between visits. Add a dark mode toggle, a settings menu, and a way to import/export habits.' },
-    { label: 'Recipe book', prompt: 'Build a recipe book app where I can add recipes with ingredients and steps, browse them in a card grid, filter by category, and save everything between visits.' },
-    { label: 'Drawing canvas', prompt: 'Build a drawing canvas app with adjustable brush size and color, an eraser, undo and redo, a clear button, and a way to download the drawing as an image. Add tools to draw straight lines, rectangles, and circles in addition to the freehand brush.' },
-    { label: 'Quiz game', prompt: 'Build a multiple-choice quiz game that shows one question at a time, gives instant feedback on each answer, tracks the score, and shows a results summary at the end with a play-again button. Add sound effects and countdown timer.' },
-    { label: 'Kanban board', prompt: 'Build a Kanban board with To Do, In Progress, and Done columns where I can add cards, drag them between columns, edit and delete them, and keep everything saved between visits.' },
-    { label: 'Budget planner', prompt: 'Build a monthly budget planner where I can set income, add budget categories with limits, log spending against each, and see how much is left in each category with a visual progress bar.' },
-    { label: 'Flashcards', prompt: 'Build a flashcard study app where I can create decks of cards with a front and back, flip through them one at a time, shuffle the deck, and keep my decks saved between visits. Add study progress tracker. Dark mode. AI card generation. And import/export functionality.' },
-    { label: 'Calculator', prompt: 'Build a clean calculator with the standard arithmetic operations, a clear and backspace button, keyboard support, and a running history of recent calculations. Add scientific mode.' },
-    { label: 'Language learning app', prompt: 'Build a language learning app where I can learn a new language by practicing vocabulary and grammar, with a quiz mode, a progress tracker, and a way to import/export flashcards.' },
-    { label: 'Music player', prompt: 'Build a music player UI with a playlist, play, pause, next, and previous controls, a seek bar with elapsed and total time, and a volume slider.' },
-    { label: 'Memory game', prompt: 'Build a memory matching card game on a grid where I flip two cards at a time to find pairs, track the number of moves and elapsed time, and celebrate when all pairs are matched.' },
-    { label: 'Countdown timer', prompt: 'Build a countdown timer where I can set hours, minutes, and seconds, start, pause, and reset it, and get a clear visual and audible alert when it reaches zero.' },
-    { label: 'Blog template', prompt: 'Build a clean blog homepage template with a header, a list of post previews with titles, dates, and excerpts, a sidebar with categories, and a single-post reading view.' },
-    { label: 'AI chatbot', prompt: 'Build an AI chatbot with a clean chat interface where I can send messages and get streaming replies, with a typing indicator, message history saved between visits, and a button to start a new conversation.' },
-    { label: 'Personal finance tracker', prompt: 'Build a personal finance tracker where I can track my income, expenses, and savings, with a budget planner, a spending tracker, and a savings goal tracker.' },
+    {
+        label: 'SaaS dashboard',
+        description: 'Metrics, customer activity, and a focused team workspace.',
+        icon: 'space_dashboard',
+        tone: 'mint',
+        prompt: 'Build a polished SaaS dashboard for a small product team. Include a responsive sidebar and top bar, realistic KPI cards, an interactive revenue chart, recent activity, and a searchable customer table with working filters and sorting. Give it a cohesive design system, accessible contrast, useful empty states, and realistic seeded data so the first screen feels alive.',
+    },
+    {
+        label: 'Online storefront',
+        description: 'A product grid, useful filters, and a working cart.',
+        icon: 'storefront',
+        tone: 'amber',
+        prompt: 'Build a refined online storefront for a contemporary home and lifestyle brand. Include a responsive navigation bar, editorial hero, product grid with category filters and search, product details, and a cart drawer with working quantity controls and totals. Use a small realistic demo catalog, clear empty states, and a polished checkout summary.',
+    },
+    {
+        label: 'Creator portfolio',
+        description: 'A distinctive home for work, story, and contact.',
+        icon: 'person',
+        tone: 'violet',
+        prompt: 'Build a distinctive personal portfolio for an independent designer. Include a confident hero, short biography, selected-project gallery with category filters, services, testimonials, and a contact form with validation and success state. Make it responsive, editorial, easy to scan, and populated with tasteful realistic sample content.',
+    },
+    {
+        label: 'Booking app',
+        description: 'Service discovery, available slots, and confirmation.',
+        icon: 'calendar_month',
+        tone: 'blue',
+        prompt: 'Build a friendly appointment-booking app for a neighborhood wellness studio. Include a service list with durations and prices, staff selection, a clear date and time-slot picker, booking details with validation, and a confirmation screen. Show realistic sample availability, responsive layouts, and helpful states when no slots are available.',
+    },
+    {
+        label: 'Project tracker',
+        description: 'A flexible board for turning plans into progress.',
+        icon: 'view_kanban',
+        tone: 'cyan',
+        prompt: 'Build a clean project tracker with a Kanban board for To do, In progress, and Done. Let users create, edit, delete, and move cards between columns; add priority, due date, search, and a project summary. Include polished drag-and-drop interactions, realistic example tasks, responsive behavior, and persistence between visits.',
+    },
+    {
+        label: 'Launch page',
+        description: 'A sharp first impression for a new product or idea.',
+        icon: 'rocket_launch',
+        tone: 'rose',
+        prompt: 'Build a high-quality launch page for a new productivity product. Include a compelling hero with a clear call to action, product preview, benefits, feature sections, social proof, pricing, FAQ, and a final signup section. Use a distinctive visual direction, responsive layouts, strong content hierarchy, and working navigation and form states.',
+    },
 ];
 
 // Fill the empty-state starter-prompt row. Built once at skeleton time; the row
@@ -38,38 +57,24 @@ function renderStarterPrompts() {
     const $row = $('.chat-starter-prompts');
     if (!$row.length) return;
     $row.empty();
-    // Shuffle a copy (Fisher-Yates) so both the order and which ideas surface
-    // vary per page load, then show only the first few. The source array is
-    // left untouched.
-    const prompts = STARTER_PROMPTS.slice();
-    for (let i = prompts.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [prompts[i], prompts[j]] = [prompts[j], prompts[i]];
-    }
-    prompts.slice(0, 6).forEach(s => {
-        const $chip = $('<button type="button" class="chat-starter-chip"></button>');
-        $chip.text(s.label);
-        $chip.attr('data-prompt', s.prompt);
-        $row.append($chip);
+    STARTER_PROMPTS.forEach(starter => {
+        const $card = $('<button type="button" class="chat-starter-chip home-template-card"></button>');
+        $card.addClass(`template-tone-${starter.tone}`);
+        $card.attr('data-prompt', starter.prompt);
+
+        const $icon = $('<span class="home-template-icon material-symbols-outlined" aria-hidden="true"></span>')
+            .text(starter.icon);
+        const $arrow = $('<span class="home-template-arrow" aria-hidden="true">↗</span>');
+        const $top = $('<span class="home-template-top"></span>').append($icon, $arrow);
+        const $title = $('<span class="home-template-title"></span>').text(starter.label);
+        const $description = $('<span class="home-template-description"></span>').text(starter.description);
+        $card.append($top, $title, $description);
+        $row.append($card);
     });
-    // Mirror the post-turn suggestion row: keep the soft edge fades in sync as
-    // the row scrolls, and set the initial state now that it's laid out. Chip
-    // widths can shift once the first-paint fonts finish loading, so recompute
-    // when fonts.ready resolves too. (updateSuggestionFade lives in app.js,
-    // which loads after this file but runs well before any render — guard with
-    // optional-call regardless.)
-    const row = $row[0];
-    // This element is reused across refreshes (it's emptied and refilled, not
-    // replaced), so a prior scroll position can survive into the new set. Snap
-    // it back to the left so the first idea is always visible after a refresh.
-    row.scrollLeft = 0;
-    $row.off('scroll.starterFade').on('scroll.starterFade', () => window.updateSuggestionFade?.(row));
-    window.updateSuggestionFade?.(row);
-    window.enableSuggestionMouseScroll?.(row);
-    if (document.fonts && document.fonts.ready) {
-        document.fonts.ready.then(() => window.updateSuggestionFade?.(row));
-    }
+    // Grid cards need no scroll fades. Re-rendering resets selection while the
+    // shared click handler still places the brief into the composer for review.
 }
+
 window.renderStarterPrompts = renderStarterPrompts;
 
 // Compact, Grok-style history control. This is UI-only: the full chat history
@@ -184,21 +189,18 @@ function renderSkeleton() {
 
     h += `<main class="chat chat-current" id="new-chat">`;
         h += `<div class="chat-box"></div>`;
-        // Landing hero (tagline → starter prompts). The wrapper is
-        // display:contents by default so it has ZERO layout impact — critical
-        // for the active-chat state, whose flex column relies on .chat-input
-        // being a direct flex item of .chat. It only becomes a real flex column
-        // in the feed-present landing state (.has-feed), where it holds the
-        // hero centered in the first viewport while the community feed peeks
-        // above the fold below it.
+        // Studio landing. In an active chat, .home-hero becomes display:contents
+        // and the landing-only elements are hidden, leaving .chat-input as the
+        // same direct flex child the conversation layout expects.
         h += `<div class="home-hero">`;
-        h += `<div class="chat-tagline"><a class="chat-tagline-logo" href="/"><img class="chat-tagline-icon" src="/lion-logo.svg" alt="SILELO"></a><h1 class="chat-tagline-text">Build with SILELO AI</h1></div>`;
-        h += `<div class="chat-tagline-sub">Describe your idea. SILELO turns it into a working app.</div>`;
+        h += `<div class="home-kicker"><span class="home-kicker-mark" aria-hidden="true"></span><span>YOUR AI PRODUCT STUDIO</span><span class="home-kicker-divider" aria-hidden="true"></span><span>IDEA → LIVE APP</span></div>`;
+        h += `<div class="chat-tagline"><a class="chat-tagline-logo" href="/" aria-label="SILELO home"><img class="chat-tagline-icon" src="/lion-logo.svg" alt=""></a><h1 class="chat-tagline-text">Your next idea, made real.</h1></div>`;
+        h += `<div class="chat-tagline-sub">Describe the product. Build it in a live preview. Keep refining until it feels right.</div>`;
         h += `<div class="chat-input">`;
             // Icon-only controls carry an accessible name (aria-label / title): a
             // screen reader otherwise announces the composer as an unlabelled
             // text field and the send/stop button as just "button".
-            h += `<textarea class="chat-input-message" data-gramm="false" placeholder="What can Puter build for you today?" aria-label="Message"></textarea>`;
+            h += `<textarea class="chat-input-message" data-gramm="false" placeholder="What should we build together? Describe the idea, audience, or outcome…" aria-label="Describe the app or website you want to build"></textarea>`;
             h += `<div class="chat-input-message-actions">`;
                 h += `<button class="attachment-button" title="Attach files from your computer">${attachment_svg}</button>`;
                 h += `<input type="file" class="attachment-file-input" accept="${ATTACHMENT_ACCEPT}" multiple style="display:none">`;
@@ -207,11 +209,27 @@ function renderSkeleton() {
                 h += `<button class="send" disabled title="Send message" aria-label="Send message">${send_svg}</button>`;
             h += `</div>`;
         h += `</div>`;
-        // Empty-state starter prompts (populated by renderStarterPrompts after
-        // append), with a small lead-in heading. Both hidden once the chat is
-        // active via `.chat.active`, like the tagline above them.
-        h += `<div class="chat-starter-heading">Looking for an idea?</div>`;
-        h += `<div class="chat-starter-prompts"></div>`;
+        h += `<div class="home-prompt-hint"><span class="material-symbols-outlined" aria-hidden="true">tips_and_updates</span><span>A strong brief names the audience, the key action, and the feeling you want.</span></div>`;
+        h += `<div class="home-capabilities" aria-label="What happens next">`;
+            h += `<div class="home-capability"><span class="material-symbols-outlined" aria-hidden="true">visibility</span><span>Live preview</span></div>`;
+            h += `<span class="home-capability-divider" aria-hidden="true"></span>`;
+            h += `<div class="home-capability"><span class="material-symbols-outlined" aria-hidden="true">edit_square</span><span>Visual edits</span></div>`;
+            h += `<span class="home-capability-divider" aria-hidden="true"></span>`;
+            h += `<div class="home-capability"><span class="material-symbols-outlined" aria-hidden="true">rocket_launch</span><span>Publish when ready</span></div>`;
+        h += `</div>`;
+        // Six detailed, editable product briefs make the first build feel guided
+        // without auto-sending anything. The user remains in control of the prompt.
+        h += `<div class="chat-starter-heading"><div class="home-starter-titlegroup"><span class="home-section-kicker">START WITH A BLUEPRINT</span><h2>Pick a direction. Make it yours.</h2></div><span class="home-starter-note">6 ready-to-edit briefs</span></div>`;
+        h += `<div class="chat-starter-prompts" role="group" aria-label="Starter app blueprints"></div>`;
+        h += `<details class="home-brief-details"><summary><span class="material-symbols-outlined" aria-hidden="true">tune</span><span>Help me shape a stronger brief</span><span class="home-brief-summary-note">A few quick details</span><span class="material-symbols-outlined home-brief-chevron" aria-hidden="true">expand_more</span></summary>`;
+            h += `<div class="home-brief-form">`;
+                h += `<label class="home-brief-field home-brief-wide"><span>What are you creating? <span class="home-brief-required">Required</span></span><input name="idea" type="text" required maxlength="180" placeholder="e.g. A meal-planning app for busy families"></label>`;
+                h += `<label class="home-brief-field"><span>Who is it for?</span><input name="audience" type="text" maxlength="140" placeholder="e.g. Independent fitness coaches"></label>`;
+                h += `<label class="home-brief-field"><span>What should people be able to do?</span><textarea name="actions" rows="2" maxlength="320" placeholder="e.g. Book a session, track progress, and message a coach"></textarea></label>`;
+                h += `<label class="home-brief-field home-brief-wide"><span>Visual direction</span><select name="style"><option value="">Let the product set the direction</option><option value="Clean and minimal, with generous whitespace and restrained color">Clean &amp; minimal</option><option value="Warm and editorial, with expressive typography and soft neutrals">Warm &amp; editorial</option><option value="Bold and energetic, with confident color and crisp contrast">Bold &amp; energetic</option><option value="Dark and technical, with a calm, precise interface">Dark &amp; technical</option></select></label>`;
+                h += `<button type="button" class="home-brief-apply"><span class="material-symbols-outlined" aria-hidden="true">auto_awesome</span> Add details to my prompt</button>`;
+            h += `</div>`;
+        h += `</details>`;
         h += `</div>`; // /.home-hero
         // "From the community" — the daily-curated feed of featured apps.
         // Populated and revealed by initFeaturedFeed() (js/featured.js) once
@@ -3424,6 +3442,38 @@ $(document).on('click', '.chat-starter-chip', function() {
     $(this).addClass('selected');
 });
 
+// Turn a few plain-language answers into a complete, editable first-build brief.
+// This is a local helper: it never sends the user's idea until they press Send.
+$(document).on('click', '.home-brief-apply', function() {
+    const $details = $(this).closest('.home-brief-details');
+    const form = $details.find('.home-brief-form')[0];
+    if (!form) return;
+    const ideaField = form.querySelector('[name="idea"]');
+    if (!ideaField) return;
+
+    const value = name => (form.querySelector(`[name="${name}"]`)?.value || '').replace(/\s+/g, ' ').trim();
+    const idea = value('idea').replace(/[.!?]+$/, '');
+    if (!idea) {
+        ideaField.setCustomValidity('Describe what you want to build.');
+        ideaField.reportValidity();
+        ideaField.setCustomValidity('');
+        ideaField.focus();
+        return;
+    }
+    if (!ideaField.reportValidity()) return;
+    const audience = value('audience');
+    const actions = value('actions');
+    const style = value('style');
+    const brief = [
+        `Build this product: ${idea}.`,
+        audience && `Intended audience: ${audience}.`,
+        actions && `The core user actions should include: ${actions}.`,
+        style && `Visual direction: ${style}.`,
+        'Make the result feel like a complete, polished product rather than a static mockup. Ensure the main interactions work, the layout adapts to mobile, and the interface includes realistic sample content plus clear empty and success states.',
+    ].filter(Boolean).join('\n\n');
+    applyChipPromptToComposer(brief);
+    $details.prop('open', false);
+});
 
 $(document).on('click', '.upgrade-button', function() {
     puter.ui.requestUpgrade();
