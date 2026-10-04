@@ -6487,3 +6487,38 @@ body {
 .chat-tagline-sub {
     color: #94a3b8;
 }
+
+
+/* PANUPAN / SILELO signature backdrop */
+body::before {
+    content: "ภาณุพันธ์  •  สลี่ออลา     ภาณุพันธ์  •  สลี่ออลา     ภาณุพันธ์  •  สลี่ออลา";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    display: block;
+    padding: 8vh 3vw;
+    font-family: "Noto Sans Thai", "Noto Sans", sans-serif;
+    font-size: clamp(18px, 2.4vw, 30px);
+    font-weight: 300;
+    line-height: 5.5;
+    letter-spacing: .08em;
+    white-space: pre-wrap;
+    word-spacing: 2.4em;
+    color: rgba(148, 163, 184, .035);
+    transform: rotate(-8deg) scale(1.08);
+    transform-origin: center;
+    opacity: .9;
+    mask-image: linear-gradient(to bottom, transparent, black 18%, black 82%, transparent);
+    -webkit-mask-image: linear-gradient(to bottom, transparent, black 18%, black 82%, transparent);
+}
+@media (max-width: 640px) {
+    body::before {
+        padding: 7vh 2vw;
+        font-size: 16px;
+        line-height: 6;
+        letter-spacing: .04em;
+        word-spacing: 1.2em;
+        transform: rotate(-8deg) scale(1.12);
+    }
+}
