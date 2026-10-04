@@ -1444,6 +1444,55 @@ async function clearChatMessages(chatId = currentChatId) {
 }
 window.clearChatMessages = clearChatMessages;
 
+
+// Remove the oldest batch of conversation messages without creating a new chat.
+// Each click removes up to 10 non-system messages, so the user can keep clicking
+// to trim a long conversation gradually while preserving the project itself.
+async function clearNextChatMessages(chatId = currentChatId) {
+    if (!chatId || chatId !== currentChatId) return false;
+
+    terminateActiveTurn();
+    resetChatUIForSwitch();
+
+    const history = Array.isArray(chatHistory) ? chatHistory : [];
+    const removableIndexes = [];
+    for (let i = 0; i < history.length; i++) {
+        const msg = history[i];
+        if (msg && msg.role !== 'system') removableIndexes.push(i);
+    }
+
+    if (!removableIndexes.length) {
+        window.showToast?.('ล้างข้อความหมดแล้ว', { type: 'info', key: 'chat-clear-batch-empty' });
+        return false;
+    }
+
+    const removeSet = new Set(removableIndexes.slice(0, 10));
+    const removed = removeSet.size;
+    chatHistory = history.filter((_, i) => !removeSet.has(i));
+
+    try {
+        await saveCurrentChat({ currentChatId: chatId, chatHistory });
+        // Remove the same oldest visible messages from the DOM.
+        $('.chat-box > .message').slice(0, removed).remove();
+        updateChatHistoryCollapse();
+        window.updateChatHistoryBatchButton?.();
+        window.showToast?.(`ล้างแล้ว ${removed} ข้อความ • กดซ้ำเพื่อล้างต่อ`, {
+            type: 'success',
+            key: 'chat-clear-batch'
+        });
+        return true;
+    } catch (e) {
+        console.error('Clear next chat messages failed:', e);
+        window.showToast?.('ล้างข้อความไม่สำเร็จ — ข้อมูลเดิมยังอยู่', {
+            type: 'error',
+            key: 'chat-clear-batch-failed'
+        });
+        return false;
+    }
+}
+window.clearNextChatMessages = clearNextChatMessages;
+
+
 const _deletedChatIds = new Set();
 
 async function deleteChat(chatId) {
