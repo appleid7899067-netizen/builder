@@ -4263,6 +4263,24 @@ $(document).on('click', '.chat-menu-btn', function(e) {
             },
             '-',
             {
+                label: 'Clear messages',
+                action: async function() {
+                    deleteFlowActive = true;
+                    try {
+                        if (await confirmByTyping({
+                            title: 'Clear chat messages?',
+                            body: 'This removes the visible conversation from this project, but keeps the project files and a small continuation context so you can keep talking about the same work.',
+                            confirmWord: 'clear',
+                            confirmLabel: 'Clear',
+                        })) {
+                            setTimeout(() => { clearChatMessages(chatId); }, 0);
+                        }
+                    } finally {
+                        setTimeout(() => { deleteFlowActive = false; }, 0);
+                    }
+                }
+            },
+            {
                 label: 'Delete',
                 action: async function() {
                     // Guard the whole flow (confirm dialog + removal) so clicking
