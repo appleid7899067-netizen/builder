@@ -263,7 +263,7 @@ function classicBundle() {
       // version of it instead. sitemap.xml is not here either: seoPagesPlugin
       // GENERATES it from the page registry, so it can never fall out of sync
       // with the pages that actually shipped.)
-      for (const f of ['robots.txt', 'puter-logo.png', 'lion-logo.svg']) {
+      for (const f of ['robots.txt', 'puter-logo.png', 'lion-logo.svg', 'silelo-logo.svg']) {
         const src = path.join(SRC, f);
         if (fs.existsSync(src)) {
           fs.copyFileSync(src, path.join(OUT_DIR, f));
