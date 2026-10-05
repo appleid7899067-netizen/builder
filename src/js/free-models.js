@@ -118,11 +118,22 @@
         return Number.isFinite(number) && number > 0 ? number : 0;
     }
 
+    function modelPriority(model) {
+        const haystack = String(model.id || '').toLowerCase() + ' ' + String(model.name || '').toLowerCase();
+        // Keep the visible free roster focused on preferred Builder families.
+        // Other verified-free families remain available as fallbacks.
+        if (/\b(?:yandex|nex)\b/.test(haystack)) return 99;
+        if (/qwen/.test(haystack)) return 0;
+        if (/deepseek/.test(haystack)) return 1;
+        if (/\b(?:llama|mistral|gemma)\b/.test(haystack)) return 2;
+        return 3;
+    }
+
     function compareModels(a, b) {
-        // Prefer models explicitly marked as supporting tool calls, then free
-        // variants with their own ID (rather than a generic zero-price listing),
-        // then recent/high-context models. Unknown tool metadata is still
-        // eligible, but ranks after an explicit `tool_call: true` entry.
+        // Prefer Qwen/DeepSeek, then explicit tool support, :free variants,
+        // and finally recent/high-context verified-free models.
+        const priorityDifference = modelPriority(a) - modelPriority(b);
+        if (priorityDifference) return priorityDifference;
         const toolRank = (m) => m.tool_call === true ? 0 : 1;
         const toolDifference = toolRank(a) - toolRank(b);
         if (toolDifference) return toolDifference;
@@ -164,6 +175,7 @@
         const seen = new Set();
         return unwrapModels(response)
             .filter(isUsableChatModel)
+            .filter(model => modelPriority(model) < 99)
             .filter(model => {
                 const id = String(model.id).trim();
                 const key = id.toLowerCase();
