@@ -6451,7 +6451,7 @@ body {
 }
 
 
-/* SILELO brand refinement: the lion mark and wordmark share the same visual language. */
+/* SILELO brand refinement: abstract signature mark + wordmark. */
 body {
     background:
       radial-gradient(900px 520px at 50% -12%, rgba(0,230,118,.08), transparent 62%),
@@ -6524,12 +6524,12 @@ body::before {
 }
 
 
-/* SILELO mascot hero: large cartoon lion mark */
+/* SILELO signature hero: large abstract mark. */
 .chat-tagline { position: relative; min-height: 210px; flex-direction: column; gap: 10px; }
-.chat-tagline-logo { width: 180px; height: 180px; border-radius: 38px; background: rgba(15,20,28,.72); box-shadow: 0 0 70px rgba(0,230,118,.10), 0 0 35px rgba(168,85,247,.10); }
-.chat-tagline-icon { width: 164px; height: 164px; object-fit: contain; }
+.chat-tagline-logo { width: 156px; height: 156px; border-radius: 34px; background: rgba(9,13,19,.78); box-shadow: 0 0 60px rgba(0,255,157,.12), 0 0 34px rgba(192,132,252,.10); }
+.chat-tagline-icon { width: 144px; height: 144px; object-fit: contain; }
 .chat-tagline-text { margin-top: 2px; }
-@media (max-width: 560px) { .chat-tagline { min-height: 170px; } .chat-tagline-logo { width: 145px; height: 145px; border-radius: 30px; } .chat-tagline-icon { width: 132px; height: 132px; } }
+@media (max-width: 560px) { .chat-tagline { min-height: 170px; } .chat-tagline-logo { width: 126px; height: 126px; border-radius: 28px; } .chat-tagline-icon { width: 116px; height: 116px; } }
 
 
 /* ---- Compact chat history control --------------------------------------- */
