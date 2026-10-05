@@ -1,15 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
-<title>SILELO lion mark</title><desc>Geometric premium lion head mark for SILELO AI Builder</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+<title>SILELO signature mark</title>
+<desc>Abstract S signature mark for SILELO AI Builder</desc>
 <defs>
-  <linearGradient id="g" x1="32" y1="28" x2="224" y2="232" gradientUnits="userSpaceOnUse">
-    <stop stop-color="#a855f7"/><stop offset=".42" stop-color="#00e676"/><stop offset="1" stop-color="#b7ffd9"/>
+  <linearGradient id="s" x1="92" y1="78" x2="420" y2="438" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#c084fc"/>
+    <stop offset=".48" stop-color="#00ff9d"/>
+    <stop offset="1" stop-color="#b7ffd9"/>
   </linearGradient>
+  <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+    <feGaussianBlur stdDeviation="9" result="blur"/>
+    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
 </defs>
-<path d="M48 96 35 62l43 18 26-28 24 20 24-20 26 28 43-18-13 34 9 49c0 49-31 79-79 90-48-11-79-41-79-90l9-49Z" fill="#0a0e14" stroke="url(#g)" stroke-width="7" stroke-linejoin="round"/>
-<path d="M76 93c13 18 24 27 52 27s39-9 52-27" fill="none" stroke="#00e676" stroke-width="6" stroke-linecap="round"/>
-<path d="M84 116c8-9 20-12 31-5M172 116c-8-9-20-12-31-5" fill="none" stroke="#d8ffe9" stroke-width="5" stroke-linecap="round"/>
-<path d="M91 127c8 7 18 7 26 0M165 127c-8 7-18 7-26 0" fill="none" stroke="#00e676" stroke-width="4" stroke-linecap="round"/>
-<path d="M128 113v51l-17 20 17 13 17-13-17-20" fill="none" stroke="#b7ffd9" stroke-width="5" stroke-linejoin="round"/>
-<path d="M98 184c10 10 20 15 30 15s20-5 30-15" fill="none" stroke="#a855f7" stroke-width="5" stroke-linecap="round"/>
-<circle cx="101" cy="116" r="4" fill="#00e676"/><circle cx="155" cy="116" r="4" fill="#00e676"/>
+<rect width="512" height="512" rx="116" fill="#090d13"/>
+<path d="M374 112c-28-25-67-39-111-39-72 0-128 39-128 91 0 47 42 69 122 87 58 13 83 26 83 55 0 31-32 55-81 55-49 0-88-18-119-51"
+ fill="none" stroke="url(#s)" stroke-width="31" stroke-linecap="round" filter="url(#glow)"/>
+<path d="M357 105c-23-18-55-28-91-28-64 0-113 32-113 76 0 40 37 57 111 74 69 16 103 36 103 73 0 46-43 79-105 79-57 0-104-22-139-59"
+ fill="none" stroke="#f4fff9" stroke-opacity=".9" stroke-width="5" stroke-linecap="round"/>
+<path d="M116 397c70 37 167 35 238-5" fill="none" stroke="#00ff9d" stroke-width="5" stroke-linecap="round" stroke-dasharray="3 14"/>
+<text x="256" y="452" text-anchor="middle" fill="#c084fc" font-family="Arial, Helvetica, sans-serif" font-size="25" font-weight="700" letter-spacing="9">SILELO</text>
 </svg>
