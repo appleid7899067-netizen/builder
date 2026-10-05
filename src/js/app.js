@@ -1,4 +1,31 @@
 const MODEL_STORAGE_KEY = 'puter_builder_model';
+const CHAT_MODE_STORAGE_KEY = 'silelo_chat_mode';
+let chatMode = (() => { try { return localStorage.getItem(CHAT_MODE_STORAGE_KEY) === 'chat' ? 'chat' : 'build'; } catch (_) { return 'build'; } })();
+
+function isSimpleChatMode() { return chatMode === 'chat'; }
+function setChatMode(mode) {
+    chatMode = mode === 'chat' ? 'chat' : 'build';
+    try { localStorage.setItem(CHAT_MODE_STORAGE_KEY, chatMode); } catch (_) {}
+    const button = document.querySelector('.chat-mode-toggle');
+    if (button) {
+        button.textContent = chatMode === 'chat' ? '💬 คุย' : '🛠️ สร้าง';
+        button.classList.toggle('active', chatMode === 'chat');
+        button.setAttribute('aria-pressed', String(chatMode === 'chat'));
+        button.title = chatMode === 'chat' ? 'โหมดคุยธรรมดา: ไม่สร้างแอปและไม่รันโค้ด' : 'โหมดสร้าง: ให้ SILELO สร้างหรือแก้แอป';
+    }
+}
+function bindChatModeToggle() {
+    const button = document.querySelector('.chat-mode-toggle');
+    if (!button || button.dataset.bound) return;
+    button.dataset.bound = '1';
+    button.addEventListener('click', () => {
+        if (isProcessing || _sendSetupInFlight) return;
+        setChatMode(isSimpleChatMode() ? 'build' : 'chat');
+    });
+    setChatMode(chatMode);
+}
+window.setChatMode = setChatMode;
+window.bindChatModeToggle = bindChatModeToggle;
 const PRIMARY_FREE_MODEL_LIMIT = 20;
 const MODEL_CATALOG_TTL_MS = 2 * 60 * 1000;
 const EMPTY_MODEL_CATALOG_RETRY_MS = 15 * 1000;
@@ -3876,6 +3903,96 @@ window.saveComposerDraft = saveComposerDraft;
 window.settleComposerDraftIdentity = settleComposerDraftIdentity;
 // ===== composer-drafts (end) =====
 
+async function sendSimpleChatMessage(messageText, turnChatId) {
+    const text = String(messageText || '').trim();
+    if (!text) return;
+    const model = getActiveFreeModelId();
+    if (!model) {
+        window.showToast?.('ยังไม่มีโมเดลฟรีที่พร้อมใช้งาน', { type: 'error', key: 'no-free-ai-model', throttleMs: 5000 });
+        return;
+    }
+
+    const historyForChat = [{ role: 'system', content:
+        'You are SILELO, a friendly Thai-first AI assistant. This is ordinary conversation mode. ' +
+        'Do not build apps, edit files, run code, use tools, publish projects, or modify the user project. ' +
+        'Just have a natural helpful conversation. Answer in the language the user uses, with Thai preferred. ' +
+        'Be concise unless the user asks for detail.'
+    }];
+    for (const msg of (Array.isArray(chatHistory) ? chatHistory : [])) {
+        if (!msg || (msg.role !== 'user' && msg.role !== 'assistant')) continue;
+        if (typeof msg.content === 'string' && msg.content.trim()) {
+            historyForChat.push({ role: msg.role, content: msg.content });
+            continue;
+        }
+        if (Array.isArray(msg.content)) {
+            const textParts = msg.content
+                .filter(p => p && p.type === 'text' && typeof p.text === 'string')
+                .map(p => p.text)
+                .join('\n');
+            if (textParts.trim()) historyForChat.push({ role: msg.role, content: textParts });
+        }
+    }
+
+    const userId = generateMessageId();
+    appendMessage(nl_to_p(htmlEscape(text)), true, false, false, false, userId);
+    chatHistory.push({ role: 'user', content: text, messageId: userId });
+    scheduleSaveCurrentChat({ chatHistory, currentChatId: turnChatId, appDir: currentAppDir, interrupted: true });
+
+    isProcessing = true;
+    shouldStop = false;
+    activeTurnInterrupted = false;
+    abortController = new AbortController();
+    updateSendButtonState(true);
+    $('.chat-input').addClass('disabled');
+    $('.chat-input-message').prop('disabled', true);
+
+    const context = {
+        abortController,
+        tools: [],
+        chatHistory,
+        currentMessage: null,
+        currentMessageContent: '',
+        currentChatId: turnChatId,
+        appDir: currentAppDir,
+        turnSeq: ++_turnSeq,
+        deferPreviewUntilTurnComplete: false,
+        interrupted: true
+    };
+
+    try {
+        const stream = await abortableAwait(puter.ai.chat(historyForChat, {
+            model,
+            tools: [],
+            stream: true,
+            reasoning_effort: 'medium',
+            signal: abortController.signal
+        }), abortController.signal);
+        await handleMessageStream(stream, context);
+        if (!activeTurnInterrupted && !isAborted(abortController) && turnChatId === currentChatId) {
+            revealFinalReply(context, 0);
+            window.flushTurnUsage?.(context);
+            scheduleSaveCurrentChat({ chatHistory, currentChatId: turnChatId, appDir: currentAppDir, interrupted: false });
+        }
+    } catch (error) {
+        if (!activeTurnInterrupted && turnChatId === currentChatId) {
+            appendErrorMessage(friendlyErrorMessage(extractErrorText(error)));
+            chatHistory.push({ role: 'assistant', content: friendlyErrorMessage(extractErrorText(error)), isError: true });
+        }
+    } finally {
+        if (turnChatId === currentChatId) {
+            isProcessing = false;
+            shouldStop = false;
+            abortController = null;
+            $('.chat-input').removeClass('disabled');
+            $('.chat-input-message').prop('disabled', false);
+            $('.attachment-button').prop('disabled', false);
+            updateSendButtonState(false);
+            try { await saveCurrentChat({ chatHistory, currentChatId: turnChatId, appDir: currentAppDir, interrupted: false }); } catch (_) {}
+        }
+    }
+}
+window.sendSimpleChatMessage = sendSimpleChatMessage;
+
 async function sendChatMessage(userInput = null, skipAddToHistory = false, opts = {}) {
     // Resume an interrupted build: re-send the existing (sanitized) conversation
     // so the model picks up where it left off, instead of starting a new turn
@@ -4016,6 +4133,8 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
     const consumedComposer = !isResume && userInput == null && chat_input_message == null;
     const messageText = isResume ? '' : (userInput ?? chat_input_message ?? preAuthComposerText);
     chat_input_message = undefined;
+
+    // Ordinary conversation mode is deliberately isolated from the Builder turn.\n    // It uses the same selected free model, but no tools, sandbox, file writes, preview,\n    // publish, or automatic model handoff.\n    if (!isResume && isSimpleChatMode()) {\n        if (!messageText) { _sendSetupInFlight = false; return; }\n        if (consumedComposer) {\n            $('.chat-input-message').val('');\n            $('.chat-input-message').css('height', '40px');\n            clearComposerDraft(preAuthDraftContext);\n        }\n        clearContinueSuggestions();\n        _sendSetupInFlight = false;\n        await sendSimpleChatMessage(messageText, currentChatId);\n        return;\n    }
     if (!isResume && !messageText && (!consumedComposer || preAuthAttachments.length === 0)) { _sendSetupInFlight = false; return; }
 
     if (consumedComposer) {
