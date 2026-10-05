@@ -1,5 +1,5 @@
 const MODEL_STORAGE_KEY = 'puter_builder_model';
-const PRIMARY_FREE_MODEL_LIMIT = 3;
+const PRIMARY_FREE_MODEL_LIMIT = 10;
 const MODEL_CATALOG_TTL_MS = 2 * 60 * 1000;
 const EMPTY_MODEL_CATALOG_RETRY_MS = 15 * 1000;
 let FREE_MODEL_CATALOG = [];
@@ -52,7 +52,7 @@ function renderModelPickerOptions(models, emptyLabel = 'No free models currently
         const option = document.createElement('option');
         option.value = model.id;
         const label = model.name || model.id;
-        option.textContent = /\bfree\b/i.test(label) ? label : `${label} · FREE`;
+        option.textContent = /\bfree\b/i.test(label) || /\$0\/M\s+in\s+·\s+\$0\/M\s+out/i.test(label) ? label : `${label} · FREE`;
         select.appendChild(option);
     }
 
