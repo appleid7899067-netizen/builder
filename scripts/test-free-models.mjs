@@ -76,7 +76,7 @@ const primary = discovery.selectPrimary(primaryCatalog, 3);
 check('exposes up to three primary choices', primary.length === 3);
 check('prefers different model families for the three primary choices', new Set(primary.map(model => model.id.split('/')[0].split(':').pop())).size === 3);
 const tenChoiceCatalog = Array.from({ length: 10 }, (_, i) => ({ ...primaryCatalog[i % primaryCatalog.length], id: primaryCatalog[i % primaryCatalog.length].id + '-choice-' + i }));
-check('supports up to ten selectable choices', discovery.selectPrimary(tenChoiceCatalog, 10).length === 10);
+check('supports up to twenty selectable choices', discovery.selectPrimary(Array.from({ length: 20 }, (_, i) => ({ ...primaryCatalog[i % primaryCatalog.length], id: primaryCatalog[i % primaryCatalog.length].id + '-twenty-' + i })), 20).length === 20);
 check('fills available slots when fewer than three free model families exist', discovery.selectPrimary([deepseek, { ...deepseek, id: 'infron:deepseek/another-free-variant:free' }], 3).length === 2);
 check('returns no models when the live catalog contains no free options', discovery.findFreeModels([{ id: 'vendor/paid', costs: { prompt: 1, completion: 1 } }]).length === 0);
 

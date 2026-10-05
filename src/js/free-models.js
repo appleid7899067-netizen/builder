@@ -126,8 +126,8 @@
         // Prefer the requested low-cost Builder families when Puter exposes them.
         // Only catalog entries that pass the verified-free and tool/streaming
         // checks below can enter the pool, so we never invent an unavailable ID.
-        if (/qwen/.test(haystack)) return 99;
         if (/deepseek/.test(haystack)) return 99;
+        if (/qwen/.test(haystack)) return 1;
         if (/\b(?:llama|mistral|gemma)\b/.test(haystack)) return 2;
         return 3;
     }
@@ -200,7 +200,7 @@
     }
 
     function selectPrimary(models, limit = 3) {
-        const max = Math.max(0, Math.min(10, Math.floor(Number(limit) || 0)));
+        const max = Math.max(0, Math.min(20, Math.floor(Number(limit) || 0)));
         if (!max) return [];
         const sorted = (Array.isArray(models) ? models : [])
             .filter(isUsableChatModel)
