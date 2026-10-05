@@ -202,7 +202,7 @@ function renderSkeleton() {
             h += `<div class="chat-input-message-actions">`;
                 h += `<button class="attachment-button" title="Attach files from your computer">${attachment_svg}</button>`;
                 h += `<input type="file" class="attachment-file-input" accept="${ATTACHMENT_ACCEPT}" multiple style="display:none">`;
-                h += `<div class="model-picker" title="Choose a free AI model"><span class="model-picker-label">AI</span><select class="model-picker-select" aria-label="Choose a free AI model" disabled><option value="">Checking free models…</option></select></div>`;
+                h += `<button type="button" class="chat-mode-toggle" aria-pressed="false" title="โหมดคุยธรรมดา: ไม่สร้างแอปและไม่รันโค้ด">💬 คุย</button><div class="model-picker" title="Choose a free AI model"><span class="model-picker-label">AI</span><select class="model-picker-select" aria-label="Choose a free AI model" disabled><option value="">Checking free models…</option></select></div>`;
                 // The label flips to "Stop" while a turn runs (updateSendButtonState).
                 h += `<button class="send" disabled title="Send message" aria-label="Send message">${send_svg}</button>`;
             h += `</div>`;
