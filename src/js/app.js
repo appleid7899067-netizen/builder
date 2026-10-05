@@ -3970,7 +3970,7 @@ async function sendSimpleChatMessage(messageText, turnChatId) {
         await handleMessageStream(stream, context);
         if (!activeTurnInterrupted && !isAborted(abortController) && turnChatId === currentChatId) {
             revealFinalReply(context, 0);
-            window.flushTurnUsage?.(context);
+            flushTurnUsage(context);
             scheduleSaveCurrentChat({ chatHistory, currentChatId: turnChatId, appDir: currentAppDir, interrupted: false });
         }
     } catch (error) {
