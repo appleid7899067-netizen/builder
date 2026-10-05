@@ -126,8 +126,8 @@
         // Prefer the requested low-cost Builder families when Puter exposes them.
         // Only catalog entries that pass the verified-free and tool/streaming
         // checks below can enter the pool, so we never invent an unavailable ID.
-        if (/qwen/.test(haystack)) return 0;
-        if (/deepseek/.test(haystack)) return 1;
+        if (/qwen/.test(haystack)) return 99;
+        if (/deepseek/.test(haystack)) return 99;
         if (/\b(?:llama|mistral|gemma)\b/.test(haystack)) return 2;
         return 3;
     }
@@ -174,11 +174,20 @@
         return [];
     }
 
+    function freePriceLabel(model) {
+        const sources = [model.cost, model.costs, model.pricing];
+        const zero = sources.some(source => source && typeof source === 'object'
+            && ZERO_PRICE_PAIRS.some(([inputKey, outputKey]) =>
+                finitePrice(source[inputKey]) === 0 && finitePrice(source[outputKey]) === 0));
+        return zero || hasExplicitFreeMarker(model) ? '$0/M in · $0/M out' : 'FREE';
+    }
+
     function findFreeModels(response) {
         const seen = new Set();
         return unwrapModels(response)
             .filter(isUsableChatModel)
             .filter(model => modelPriority(model) < 99)
+            .map(model => ({ ...model, name: (model.name || model.id) + ' · ' + freePriceLabel(model) }))
             .filter(model => {
                 const id = String(model.id).trim();
                 const key = id.toLowerCase();
@@ -191,7 +200,7 @@
     }
 
     function selectPrimary(models, limit = 3) {
-        const max = Math.max(0, Math.min(3, Math.floor(Number(limit) || 0)));
+        const max = Math.max(0, Math.min(10, Math.floor(Number(limit) || 0)));
         if (!max) return [];
         const sorted = (Array.isArray(models) ? models : [])
             .filter(isUsableChatModel)
