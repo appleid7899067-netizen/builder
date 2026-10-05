@@ -4433,6 +4433,17 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
                 context = {abortController, tools: turnTools, chatHistory: turnSaveContext.chatHistory, currentMessage: null, currentMessageContent: '', currentChatId: turnChatId, appDir: turnAppDir, interrupted: true};
                 await handleMessageStream(stream, context);
                 if (abortController === attemptController) _turnAwaitingStream = false;
+
+                if (!shouldStop && !activeTurnInterrupted
+                    && turnChatId === currentChatId
+                    && continuousBuildHandoffs < CONTINUOUS_BUILD_MAX_HANDOFFS
+                    && buildHasUnfinishedWork()) {
+                    continuousBuildHandoffs++;
+                    MODEL = nextContinuousBuildModel();
+                    prepareResumeHistory(turnSaveContext.chatHistory);
+                    continue;
+                }
+
                 break; // stream drained (completed, or aborted/switched — handled below)
             } catch (streamError) {
                 if (abortController === attemptController) _turnAwaitingStream = false;
