@@ -52,7 +52,7 @@ function renderModelPickerOptions(models, emptyLabel = 'No free models currently
         const option = document.createElement('option');
         option.value = model.id;
         const label = model.name || model.id;
-        option.textContent = /\bfree\b/i.test(label) ? label : `${label} · FREE`;
+        option.textContent = /\bfree\b/i.test(label) || /\$0\/M\s+in\s+·\s+\$0\/M\s+out/i.test(label) ? label : `${label} · FREE`;
         select.appendChild(option);
     }
 
