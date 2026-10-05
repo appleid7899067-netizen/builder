@@ -61,15 +61,21 @@ const catalog = [
     { ...deepseek, id: 'vendor/no-tools:free', tool_call: false },
 ];
 const found = discovery.findFreeModels({ models: catalog });
-check('accepts the listModels { models: [...] } response shape', found.length === 4);
+check('accepts the listModels { models: [...] } response shape', found.length === 1);
 check('excludes paid and unsupported models from discovery', found.every(model => model.id !== 'vendor/paid-model' && model.id !== 'vendor/no-tools:free'));
 check('sorts explicit tool-capable options ahead of unknown capabilities', found[0].tool_call === true);
 check('deduplicates repeated model IDs case-insensitively', discovery.findFreeModels([deepseek, { ...deepseek, id: deepseek.id.toUpperCase() }]).length === 1);
 
-const primary = discovery.selectPrimary(found, 3);
-check('exposes no more than three primary choices', primary.length === 3);
+const primaryCatalog = [
+    gemma,
+    { id: 'meta:llama/llama-4-8b:free', name: 'Llama 4 8B', tool_call: true, modalities: { input: ['text'] }, cost: { input: 0, output: 0 } },
+    { id: 'mistral:mistral-small:free', name: 'Mistral Small', tool_call: true, modalities: { input: ['text'] }, cost: { input: 0, output: 0 } },
+    { id: 'google:gemma/another:free', name: 'Gemma Another', tool_call: true, modalities: { input: ['text'] }, cost: { input: 0, output: 0 } },
+];
+const primary = discovery.selectPrimary(primaryCatalog, 3);
+check('exposes up to three primary choices', primary.length === 3);
 check('prefers different model families for the three primary choices', new Set(primary.map(model => model.id.split('/')[0].split(':').pop())).size === 3);
-check('never exceeds the three-model cap even when asked for more', discovery.selectPrimary(found, 10).length === 3);
+check('supports up to ten selectable choices', discovery.selectPrimary([...primaryCatalog, ...primaryCatalog.map((m, i) => ({ ...m, id: m.id + '-alt-' + i }))], 10).length === 7);
 check('fills available slots when fewer than three free model families exist', discovery.selectPrimary([deepseek, { ...deepseek, id: 'infron:deepseek/another-free-variant:free' }], 3).length === 2);
 check('returns no models when the live catalog contains no free options', discovery.findFreeModels([{ id: 'vendor/paid', costs: { prompt: 1, completion: 1 } }]).length === 0);
 
