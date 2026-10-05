@@ -6,11 +6,13 @@ This service exposes a **remote Streamable HTTP MCP endpoint** for Builder at `/
 
 - `agent_reach_doctor` — runs the upstream `agent-reach doctor --json` inside the Render container and reports the bridge backends. The report is about the remote container, not the user's computer.
 - `agent_reach_search` — public web search through Exa's hosted MCP. Optional platform filters (GitHub, YouTube, Reddit, X, Bilibili, Xiaohongshu, V2EX, LinkedIn, Facebook, Instagram, Xueqiu) use public indexed pages only.
+- `agent_reach_github_read_repo` — reads public repository metadata and its README, or a requested text file/directory.
+- `agent_reach_github_read_pr` — reads a public pull request, changed-file diffs, conversation comments, reviews, and inline review comments.
 - `agent_reach_read_url` — reads a public HTTP(S) page with Jina Reader.
 - `agent_reach_youtube_transcript` — extracts existing public subtitles with `yt-dlp`; it does not download video/audio.
 - `agent_reach_check_update` — checks the upstream Agent-Reach version; it does not install or update anything.
 
-There is no arbitrary command-execution tool and no write/action tool. The service does not accept, store, or forward user cookies or browser sessions. Authenticated platform backends (for example account feeds or private Reddit/Xiaohongshu content) therefore remain unavailable from this remote service. Exa may still find public, indexed pages for those sites; the result labels that limitation.
+There is no arbitrary command-execution tool and no write/action tool. The service does not accept, store, or forward user cookies or browser sessions. GitHub tools use the unauthenticated public REST API, so private repositories are unavailable and GitHub's public API rate limits apply. PR comments and reviews are read only; nothing is posted or changed. Other authenticated platform backends (for example account feeds or private Reddit/Xiaohongshu content) remain unavailable. Exa may still find public, indexed pages for those sites; the result labels that limitation.
 
 ## Deploy to Render
 

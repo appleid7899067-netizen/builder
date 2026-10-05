@@ -68,6 +68,8 @@ const dependencies = {
     },
     read: async url => ({ url, backend: 'Jina Reader', text: 'page text', truncated: false }),
     transcript: async url => ({ url, backend: 'yt-dlp subtitles', transcript: 'video captions' }),
+    githubRepo: async (owner, repo, { path } = {}) => ({ backend: 'GitHub public REST API', repository: { full_name: `${owner}/${repo}` }, document: { path: path || 'README.md', content: 'readme' }, read_only: true }),
+    githubPullRequest: async (owner, repo, number) => ({ backend: 'GitHub public REST API', repository: `${owner}/${repo}`, pull_request: { number }, conversation_comments: [], read_only: true }),
     checkUpdate: async () => ({ output: 'up to date', update_applied: false }),
 };
 
@@ -117,6 +119,8 @@ try {
             assert.deepEqual(names, [
                 'agent_reach_check_update',
                 'agent_reach_doctor',
+                'agent_reach_github_read_pr',
+                'agent_reach_github_read_repo',
                 'agent_reach_read_url',
                 'agent_reach_search',
                 'agent_reach_youtube_transcript',
@@ -147,6 +151,24 @@ try {
             assert.match(page.content[0].text, /Jina Reader/);
             const captions = await client.callTool({ name: 'agent_reach_youtube_transcript', arguments: { url: 'https://youtu.be/abc123' } }, undefined, { timeout: 5_000 });
             assert.match(captions.content[0].text, /video captions/);
+            assert.equal(callOrder.filter(item => item === 'doctor').length, 1);
+        });
+
+        await test('GitHub repository and PR tools expose read-only public data', async () => {
+            const repository = await client.callTool({
+                name: 'agent_reach_github_read_repo',
+                arguments: { owner: 'octocat', repo: 'Hello-World' },
+            }, undefined, { timeout: 5_000 });
+            const repoPayload = JSON.parse(repository.content[0].text);
+            assert.equal(repoPayload.repository.full_name, 'octocat/Hello-World');
+            assert.equal(repoPayload.read_only, true);
+            const pullRequest = await client.callTool({
+                name: 'agent_reach_github_read_pr',
+                arguments: { owner: 'octocat', repo: 'Hello-World', number: 17 },
+            }, undefined, { timeout: 5_000 });
+            const prPayload = JSON.parse(pullRequest.content[0].text);
+            assert.equal(prPayload.pull_request.number, 17);
+            assert.equal(prPayload.read_only, true);
             assert.equal(callOrder.filter(item => item === 'doctor').length, 1);
         });
 

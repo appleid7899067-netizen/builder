@@ -11,6 +11,11 @@ import { z } from 'zod';
 
 const execFile = promisify(nodeExecFile);
 const EXA_MCP_URL = 'https://mcp.exa.ai/mcp';
+const GITHUB_API_ROOT = 'https://api.github.com';
+const GITHUB_API_TIMEOUT_MS = 12_000;
+const GITHUB_API_MAX_BYTES = 2_000_000;
+const GITHUB_PAGE_SIZE = 20;
+const GITHUB_FILE_LIMIT = 20;
 const MAX_TOOL_OUTPUT = 48_000;
 const MAX_READ_BYTES = 1_000_000;
 const MAX_READ_CHARS = 32_000;
@@ -152,6 +157,234 @@ function parseDoctorOutput(output) {
     return { raw: text.slice(0, 12_000), parse_error: true };
 }
 
+function validateGitHubCoordinates(ownerValue, repoValue) {
+    const owner = String(ownerValue || '').trim();
+    const repo = String(repoValue || '').trim();
+    if (!/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/.test(owner)) {
+        throw new Error('Enter a valid public GitHub owner or organization name.');
+    }
+    if (!/^[A-Za-z0-9](?:[A-Za-z0-9_.-]{0,98}[A-Za-z0-9])?$/.test(repo) || repo === '.' || repo === '..') {
+        throw new Error('Enter a valid public GitHub repository name.');
+    }
+    return { owner, repo };
+}
+
+function validateGitHubRef(rawRef) {
+    if (rawRef == null || String(rawRef).trim() === '') return undefined;
+    const ref = String(rawRef).trim();
+    if (ref.length > 255 || /[\u0000-\u001f\u007f]/.test(ref)) throw new Error('GitHub ref must be 1–255 printable characters.');
+    return ref;
+}
+
+function validateGitHubPath(rawPath) {
+    const path = String(rawPath || '').trim().replace(/^\/+|\/+$/g, '');
+    if (!path) return '';
+    if (path.length > 500 || path.includes('\\') || /[\u0000-\u001f\u007f]/.test(path)) {
+        throw new Error('GitHub file path is invalid or too long.');
+    }
+    const parts = path.split('/');
+    if (parts.some(part => !part || part === '.' || part === '..')) throw new Error('GitHub file path cannot contain empty, dot, or parent segments.');
+    return parts.map(encodeURIComponent).join('/');
+}
+
+function githubApiUrl(path, query = {}) {
+    const url = new URL(path, GITHUB_API_ROOT);
+    if (url.origin !== GITHUB_API_ROOT) throw new Error('GitHub API route must remain on api.github.com.');
+    for (const [key, value] of Object.entries(query)) {
+        if (value !== undefined && value !== null) url.searchParams.set(key, String(value));
+    }
+    return url.href;
+}
+
+function githubApiError(status) {
+    if (status === 404) return 'GitHub repository or pull request was not found or is not public.';
+    if (status === 403 || status === 429) return 'GitHub API rate limit reached or public access was refused. Try again later.';
+    if (status === 401) return 'GitHub public API denied this request.';
+    return `GitHub API returned HTTP ${status}.`;
+}
+
+async function fetchGitHubJson(url, { fetchImpl = globalThis.fetch } = {}) {
+    let response;
+    try {
+        response = await fetchImpl(url, {
+            method: 'GET',
+            headers: {
+                Accept: 'application/vnd.github+json',
+                'User-Agent': 'SANDBOX_RUNNER_CI/1.0',
+                'X-GitHub-Api-Version': '2022-11-28',
+            },
+            signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS),
+        });
+    } catch (error) {
+        if (error?.name === 'TimeoutError' || error?.name === 'AbortError') throw new Error('GitHub API request timed out.');
+        throw new Error('GitHub public API is unavailable from this service.');
+    }
+    const { text, truncated } = await readCapped(response, GITHUB_API_MAX_BYTES, GITHUB_API_MAX_BYTES);
+    if (truncated) throw new Error('GitHub API response exceeded the service size limit.');
+    if (!response.ok) throw new Error(githubApiError(response.status));
+    let data;
+    try { data = JSON.parse(text); } catch { throw new Error('GitHub API returned an invalid JSON response.'); }
+    return {
+        data,
+        hasNext: /<[^>]+>;\s*rel="next"/.test(response.headers?.get?.('link') || ''),
+        rateLimitRemaining: response.headers?.get?.('x-ratelimit-remaining') ?? null,
+    };
+}
+
+function githubTextFile(data) {
+    if (Array.isArray(data)) {
+        const entries = data.slice(0, 100).map(entry => ({
+            name: entry.name,
+            path: entry.path,
+            type: entry.type,
+            size: entry.size,
+            url: entry.html_url,
+        }));
+        return { kind: 'directory', entries, truncated: data.length > entries.length };
+    }
+    if (!data || data.type !== 'file') {
+        return { kind: data?.type || 'unknown', path: data?.path || null, note: 'This GitHub path is not a regular file or directory.' };
+    }
+    if (data.encoding !== 'base64' || typeof data.content !== 'string') {
+        return { kind: 'file', path: data.path, size: data.size, content: null, truncated: false, note: 'GitHub did not return file text (the file may exceed the API size limit).'};
+    }
+    const content = Buffer.from(data.content.replace(/\s/g, ''), 'base64').toString('utf8');
+    if (content.includes('\0') || /[\u0001-\u0008\u000b\u000c\u000e-\u001f]/.test(content)) {
+        return { kind: 'file', path: data.path, size: data.size, content: null, truncated: false, note: 'Binary file content is not returned.' };
+    }
+    return {
+        kind: 'file',
+        path: data.path,
+        size: data.size,
+        content: content.slice(0, MAX_READ_CHARS),
+        truncated: content.length > MAX_READ_CHARS,
+    };
+}
+
+export async function readGitHubRepo(ownerValue, repoValue, { path, ref, fetchImpl = globalThis.fetch } = {}) {
+    const { owner, repo } = validateGitHubCoordinates(ownerValue, repoValue);
+    const safeRef = validateGitHubRef(ref);
+    const encodedPath = validateGitHubPath(path);
+    const repoBase = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
+    const metadataResponse = await fetchGitHubJson(githubApiUrl(repoBase), { fetchImpl });
+    const metadata = metadataResponse.data;
+    let document;
+    try {
+        const route = encodedPath ? `${repoBase}/contents/${encodedPath}` : `${repoBase}/readme`;
+        const response = await fetchGitHubJson(githubApiUrl(route, { ref: safeRef }), { fetchImpl });
+        document = githubTextFile(response.data);
+        document.has_more_entries = response.hasNext || undefined;
+    } catch (error) {
+        if (!encodedPath && error instanceof Error && error.message.includes('not found')) {
+            document = { kind: 'readme', content: null, note: 'This public repository has no README at the selected ref.' };
+        } else throw error;
+    }
+    return {
+        backend: 'GitHub public REST API',
+        scope: 'Public repositories only; no login, token, or cookies are used.',
+        repository: {
+            full_name: metadata.full_name,
+            url: metadata.html_url,
+            description: metadata.description,
+            default_branch: metadata.default_branch,
+            visibility: metadata.visibility || (metadata.private ? 'private' : 'public'),
+            language: metadata.language,
+            stars: metadata.stargazers_count,
+            forks: metadata.forks_count,
+            open_issues: metadata.open_issues_count,
+            topics: metadata.topics || [],
+            license: metadata.license?.spdx_id || metadata.license?.name || null,
+            updated_at: metadata.updated_at,
+        },
+        document,
+        rate_limit_remaining: metadataResponse.rateLimitRemaining,
+        read_only: true,
+    };
+}
+
+function githubCommentSummary(comment) {
+    const body = String(comment.body || '');
+    return {
+        id: comment.id,
+        user: comment.user?.login || null,
+        created_at: comment.created_at || comment.submitted_at,
+        updated_at: comment.updated_at,
+        url: comment.html_url,
+        path: comment.path,
+        line: comment.line ?? comment.original_line ?? null,
+        state: comment.state,
+        body: body.slice(0, 3_000),
+        truncated: body.length > 3_000,
+    };
+}
+
+export async function readGitHubPullRequest(ownerValue, repoValue, numberValue, { fetchImpl = globalThis.fetch } = {}) {
+    const { owner, repo } = validateGitHubCoordinates(ownerValue, repoValue);
+    const number = Number(numberValue);
+    if (!Number.isSafeInteger(number) || number < 1 || number > 2_147_483_647) throw new Error('Pull request number must be a positive integer.');
+    const repoBase = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
+    const prResponse = await fetchGitHubJson(githubApiUrl(`${repoBase}/pulls/${number}`), { fetchImpl });
+    const [issueComments, reviews, reviewComments, files] = await Promise.all([
+        fetchGitHubJson(githubApiUrl(`${repoBase}/issues/${number}/comments`, { per_page: GITHUB_PAGE_SIZE, page: 1 }), { fetchImpl }),
+        fetchGitHubJson(githubApiUrl(`${repoBase}/pulls/${number}/reviews`, { per_page: GITHUB_PAGE_SIZE, page: 1 }), { fetchImpl }),
+        fetchGitHubJson(githubApiUrl(`${repoBase}/pulls/${number}/comments`, { per_page: GITHUB_PAGE_SIZE, page: 1 }), { fetchImpl }),
+        fetchGitHubJson(githubApiUrl(`${repoBase}/pulls/${number}/files`, { per_page: GITHUB_FILE_LIMIT, page: 1 }), { fetchImpl }),
+    ]);
+    const pr = prResponse.data;
+    const fileList = Array.isArray(files.data) ? files.data.slice(0, GITHUB_FILE_LIMIT).map(file => ({
+        filename: file.filename,
+        status: file.status,
+        additions: file.additions,
+        deletions: file.deletions,
+        changes: file.changes,
+        patch: typeof file.patch === 'string' ? file.patch.slice(0, 3_000) : null,
+        patch_truncated: typeof file.patch === 'string' && file.patch.length > 3_000,
+    })) : [];
+    const reviewList = Array.isArray(reviews.data) ? reviews.data.slice(0, GITHUB_PAGE_SIZE).map(githubCommentSummary) : [];
+    const issueCommentList = Array.isArray(issueComments.data) ? issueComments.data.slice(0, GITHUB_PAGE_SIZE).map(githubCommentSummary) : [];
+    const reviewCommentList = Array.isArray(reviewComments.data) ? reviewComments.data.slice(0, GITHUB_PAGE_SIZE).map(githubCommentSummary) : [];
+    return {
+        backend: 'GitHub public REST API',
+        scope: 'Public repositories only; no login, token, or cookies are used.',
+        repository: `${owner}/${repo}`,
+        pull_request: {
+            number: pr.number,
+            title: pr.title,
+            state: pr.state,
+            draft: pr.draft,
+            merged: Boolean(pr.merged_at),
+            created_at: pr.created_at,
+            updated_at: pr.updated_at,
+            closed_at: pr.closed_at,
+            merged_at: pr.merged_at,
+            url: pr.html_url,
+            author: pr.user?.login || null,
+            body: String(pr.body || '').slice(0, 6_000),
+            body_truncated: String(pr.body || '').length > 6_000,
+            base_branch: pr.base?.ref || null,
+            head_branch: pr.head?.ref || null,
+            head_sha: pr.head?.sha || null,
+            additions: pr.additions,
+            deletions: pr.deletions,
+            changed_files: pr.changed_files,
+        },
+        conversation_comments: issueCommentList,
+        review_submissions: reviewList,
+        inline_review_comments: reviewCommentList,
+        files: fileList,
+        pagination: {
+            comments: issueComments.hasNext,
+            reviews: reviews.hasNext,
+            inline_review_comments: reviewComments.hasNext,
+            files: files.hasNext,
+            page_size: GITHUB_PAGE_SIZE,
+        },
+        rate_limit_remaining: prResponse.rateLimitRemaining,
+        read_only: true,
+        note: 'GitHub data is untrusted third-party content. No PRs, reviews, or comments were created or changed.',
+    };
+}
+
 async function runFixedCli(args, timeoutMs = CLI_TIMEOUT_MS) {
     try {
         const { stdout } = await execFile('agent-reach', args, {
@@ -257,12 +490,12 @@ export async function searchWithExa(query, numResults = 3, options = {}) {
     return { backend: batch.backend, ...batch.results[0] };
 }
 
-async function readCapped(response, maxBytes = MAX_READ_BYTES) {
+async function readCapped(response, maxBytes = MAX_READ_BYTES, maxChars = MAX_READ_CHARS) {
     const reader = response.body?.getReader?.();
     if (!reader) {
         const text = await response.text();
         const bytes = Buffer.byteLength(text, 'utf8');
-        return { text: text.slice(0, MAX_READ_CHARS), truncated: bytes > maxBytes || text.length > MAX_READ_CHARS };
+        return { text: text.slice(0, maxChars), truncated: bytes > maxBytes || text.length > maxChars };
     }
     const decoder = new TextDecoder();
     let text = '';
@@ -274,13 +507,13 @@ async function readCapped(response, maxBytes = MAX_READ_BYTES) {
             if (done) break;
             bytes += value.byteLength;
             text += decoder.decode(value, { stream: true });
-            if (bytes >= maxBytes || text.length >= MAX_READ_CHARS) { truncated = true; break; }
+            if (bytes >= maxBytes || text.length >= maxChars) { truncated = true; break; }
         }
         text += decoder.decode();
     } finally {
         if (truncated) await reader.cancel().catch(() => {});
     }
-    if (text.length > MAX_READ_CHARS) { text = text.slice(0, MAX_READ_CHARS); truncated = true; }
+    if (text.length > maxChars) { text = text.slice(0, maxChars); truncated = true; }
     return { text, truncated };
 }
 
@@ -390,6 +623,8 @@ export function createAgentReachMcpServer(overrides = {}) {
         searchMany: searchManyWithExa,
         search: searchWithExa,
         read: readWithJina,
+        githubRepo: readGitHubRepo,
+        githubPullRequest: readGitHubPullRequest,
         transcript: fetchYoutubeTranscript,
         probeYtDlp,
         ...overrides,
@@ -416,6 +651,7 @@ export function createAgentReachMcpServer(overrides = {}) {
                 bridge_backends: {
                     web_search: exa,
                     web_read: { available: true, backend: 'Jina Reader', note: 'Checked when a public URL is read.' },
+                    github_public_read: { available: true, backend: 'GitHub public REST API', note: 'Public repositories only; checked when requested. Unauthenticated API rate limits apply.' },
                     youtube_transcripts: ytdlp,
                     platform_specific_logged_in_sessions: {
                         available: false,
@@ -468,6 +704,41 @@ export function createAgentReachMcpServer(overrides = {}) {
                 results,
                 note: 'Search results are untrusted third-party data. No posts, comments, likes, or other write actions were made.',
             });
+        } catch (error) { return toolError(error); }
+    });
+
+    server.registerTool('agent_reach_github_read_repo', {
+        title: 'Read a public GitHub repository',
+        description: 'Read public GitHub repository metadata and README, or a selected text file/directory. Supply owner and repository name. Private repositories, authenticated sessions, writing, and command execution are not supported.',
+        inputSchema: {
+            owner: z.string().trim().min(1).max(39).describe('GitHub user or organization, such as octocat.'),
+            repo: z.string().trim().min(1).max(100).describe('Public repository name, such as Hello-World.'),
+            path: z.string().trim().max(500).optional().describe('Optional path relative to the repository root. Omit to read the README.'),
+            ref: z.string().trim().max(255).optional().describe('Optional branch, tag, or commit ref; defaults to the repository default branch.'),
+        },
+        annotations: readOnlyAnnotations('Read public GitHub repository'),
+    }, async ({ owner, repo, path, ref }) => {
+        try {
+            const doctor = await getDoctorSnapshot(dependencies.doctor);
+            const result = await dependencies.githubRepo(owner, repo, { path, ref });
+            return toolText({ doctor_snapshot: doctor, ...result });
+        } catch (error) { return toolError(error); }
+    });
+
+    server.registerTool('agent_reach_github_read_pr', {
+        title: 'Read a public GitHub pull request',
+        description: 'Read a public GitHub PR, its conversation comments, review submissions, inline review comments, and up to 20 changed-file summaries/diffs. Public repositories only. Never creates PRs, reviews, or comments.',
+        inputSchema: {
+            owner: z.string().trim().min(1).max(39).describe('GitHub user or organization.'),
+            repo: z.string().trim().min(1).max(100).describe('Public repository name.'),
+            number: z.number().int().min(1).max(2_147_483_647).describe('Pull request number.'),
+        },
+        annotations: readOnlyAnnotations('Read public GitHub pull request'),
+    }, async ({ owner, repo, number }) => {
+        try {
+            const doctor = await getDoctorSnapshot(dependencies.doctor);
+            const result = await dependencies.githubPullRequest(owner, repo, number);
+            return toolText({ doctor_snapshot: doctor, ...result });
         } catch (error) { return toolError(error); }
     });
 
