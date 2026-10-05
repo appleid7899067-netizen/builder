@@ -4379,6 +4379,7 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
         const turnTools = window.getTurnTools();
         let context = null;
         const attemptedFreeModelIds = new Set();
+        let continuousBuildHandoffs = 0;
         while (true) {
             // A fresh AbortController per attempt. This is also the guard for a chat
             // switch during turn setup — terminateActiveTurn() may have run before
