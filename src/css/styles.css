@@ -728,6 +728,28 @@ select:focus-visible,
     background-color: #f8f8f8;
 }
 
+.chat-mode-toggle {
+    flex: 0 0 auto;
+    height: 28px;
+    padding: 0 9px;
+    border: 1px solid #dedede;
+    border-radius: 8px;
+    background: transparent;
+    color: #666;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.chat-mode-toggle:hover { background: #f4f4f4; color: #222; }
+.chat-mode-toggle.active {
+    background: #eafff5;
+    border-color: #8ce7ba;
+    color: #087c4a;
+}
+.chat-mode-toggle:disabled { opacity: .5; cursor: default; }
+
 .send {
     padding: 7px 10px;
     background-color: #484d51;
