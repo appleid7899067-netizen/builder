@@ -4405,6 +4405,12 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
                 // The SDK ignores the signal option, so the open is raced
                 // against the signal locally (abortableAwait) — otherwise an
                 // abort couldn't unstick a connection that dies mid-open.
+                // Start every build on the first member of the handoff ring.
+                // Later continuations advance to the next member without changing
+                // the project workspace or the conversation.
+                if (continuousBuildModelIndex < 0) {
+                    MODEL = nextContinuousBuildModel();
+                }
                 const stream = await abortableAwait(puter.ai.chat(prepareHistoryForAI(turnSaveContext.chatHistory), {
                     model: MODEL,
                     tools: turnTools,
