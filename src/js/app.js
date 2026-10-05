@@ -4408,6 +4408,7 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
                     tools: turnTools,
                     stream: true,
                     reasoning_effort: 'medium',
+                    compaction: true,
                     signal: abortController.signal
                 }), abortController.signal);
 
