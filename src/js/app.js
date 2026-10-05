@@ -174,6 +174,27 @@ const FALLBACK_QWEN_MODELS = [
     'qwen/qwen3.7-flash',
 ];
 
+// Continuous three-model handoff state for long app builds.
+const CONTINUOUS_BUILD_MODELS = FREE_MODELS
+    .filter(m => isModelFree(m) && !/openrouter/i.test(String(m.id || '')))
+    .slice(0, 3)
+    .map(m => m.id);
+const CONTINUOUS_BUILD_MAX_HANDOFFS = 9;
+let continuousBuildModelIndex = -1;
+let continuousBuildHandoffs = 0;
+function resetContinuousBuildHandoff() {
+    continuousBuildModelIndex = -1;
+    continuousBuildHandoffs = 0;
+}
+function nextContinuousBuildModel() {
+    continuousBuildModelIndex = (continuousBuildModelIndex + 1) % CONTINUOUS_BUILD_MODELS.length;
+    return CONTINUOUS_BUILD_MODELS[continuousBuildModelIndex];
+}
+function buildHasUnfinishedWork() {
+    const todos = Array.isArray(window.currentTodos) ? window.currentTodos : [];
+    return todos.some(t => t && (t.status === 'pending' || t.status === 'in_progress'));
+}
+
 function selectFallbackQwenModel(currentModel) {
     const next = FALLBACK_QWEN_MODELS.find(id => id !== currentModel) || FALLBACK_QWEN_MODELS[0];
     if (!next) return currentModel;
