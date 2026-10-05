@@ -4379,6 +4379,7 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
         const turnTools = window.getTurnTools();
         let context = null;
         const attemptedFreeModelIds = new Set();
+        let continuousBuildHandoffs = 0;
         while (true) {
             // A fresh AbortController per attempt. This is also the guard for a chat
             // switch during turn setup — terminateActiveTurn() may have run before
@@ -4408,6 +4409,7 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
                     tools: turnTools,
                     stream: true,
                     reasoning_effort: 'medium',
+                    compaction: true,
                     signal: abortController.signal
                 }), abortController.signal);
 
@@ -4424,6 +4426,22 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
                 context = {abortController, tools: turnTools, chatHistory: turnSaveContext.chatHistory, currentMessage: null, currentMessageContent: '', currentChatId: turnChatId, appDir: turnAppDir, turnSeq, deferPreviewUntilTurnComplete: true, interrupted: true};
                 await handleMessageStream(stream, context);
                 if (abortController === attemptController) _turnAwaitingStream = false;
+                const unfinishedBuild = Array.isArray(window.currentTodos)
+                    && window.currentTodos.some(todo => todo && (todo.status === 'pending' || todo.status === 'in_progress'));
+                if (!shouldStop && !activeTurnInterrupted && turnChatId === currentChatId
+                    && unfinishedBuild && continuousBuildHandoffs < 9) {
+                    continuousBuildHandoffs++;
+                    attemptedFreeModelIds.add(attemptModel);
+                    if (attemptedFreeModelIds.size >= PRIMARY_FREE_MODEL_LIMIT) {
+                        attemptedFreeModelIds.clear();
+                        attemptedFreeModelIds.add(attemptModel);
+                    }
+                    const nextFreeModel = selectNextFreeModel(attemptedFreeModelIds);
+                    if (nextFreeModel) {
+                        prepareResumeHistory(turnSaveContext.chatHistory);
+                        continue;
+                    }
+                }
                 break; // stream drained (completed, or aborted/switched — handled below)
             } catch (streamError) {
                 if (abortController === attemptController) _turnAwaitingStream = false;
