@@ -202,7 +202,7 @@ function renderSkeleton() {
             h += `<div class="chat-input-message-actions">`;
                 h += `<button class="attachment-button" title="Attach files from your computer">${attachment_svg}</button>`;
                 h += `<input type="file" class="attachment-file-input" accept="${ATTACHMENT_ACCEPT}" multiple style="display:none">`;
-                h += `<div class="model-picker" title="Choose AI model"><span class="model-picker-label">AI</span><select class="model-picker-select" aria-label="Choose AI model"><option value="qwen/qwen3.8-27b:free">Qwen3.8 27B · FREE</option></select></div>`;
+                h += `<div class="model-picker" title="Choose a free AI model"><span class="model-picker-label">AI</span><select class="model-picker-select" aria-label="Choose a free AI model" disabled><option value="">Checking free models…</option></select></div>`;
                 // The label flips to "Stop" while a turn runs (updateSendButtonState).
                 h += `<button class="send" disabled title="Send message" aria-label="Send message">${send_svg}</button>`;
             h += `</div>`;
@@ -1038,15 +1038,83 @@ async function runPreviewRefresh($frame, baseUrl, ownerChatId, seq) {
 }
 
 let previewRefreshPending = false;
+
+// A fresh preview should not steal the conversation while the assistant is
+// still streaming, running tools, and verifying the result. Keep the turn token
+// separate from the visual state so a late tool or a superseded turn cannot
+// reveal another project's preview.
+let deferredPreviewTurn = null;
+function previewTurnMatches(chatId, turnSeq) {
+    if (!deferredPreviewTurn) return false;
+    if (chatId != null && String(chatId) !== deferredPreviewTurn.chatId) return false;
+    if (turnSeq != null && Number(turnSeq) !== deferredPreviewTurn.turnSeq) return false;
+    return true;
+}
+
+function keepPreviewInChat() {
+    $('body').addClass('preview-deferred mobile-view-chat').removeClass('chat-hidden');
+    // A turn that started while the preview was expanded must keep the chat
+    // reachable and visible until the assistant finishes.
+    $('.preview-toggle-chat').attr({
+        title: 'Expand preview',
+        'aria-label': 'Hide the chat panel',
+        'aria-expanded': 'true',
+    });
+    window.syncViewSeg?.();
+}
+
+window.beginPreviewTurn = function(chatId, turnSeq) {
+    deferredPreviewTurn = { chatId: String(chatId), turnSeq: Number(turnSeq) };
+};
+
+// Called when an app file changes during a turn, or when publish_site creates
+// the first preview. The iframe remains available to update_preview for
+// verification, but the user stays with the organized chat/progress checklist.
+window.deferPreviewForTurn = function(chatId, turnSeq) {
+    if (!previewTurnMatches(chatId, turnSeq)) return false;
+    keepPreviewInChat();
+    return true;
+};
+
+// Reveal only the preview staged by this exact turn. A Stop/retry/chat switch
+// can let old async work unwind after a newer turn has started; its teardown
+// must not change the newer turn's layout.
+window.finishPreviewTurn = function(chatId, turnSeq) {
+    if (!previewTurnMatches(chatId, turnSeq)) return false;
+    deferredPreviewTurn = null;
+    const $body = $('body');
+    if (!$body.hasClass('preview-deferred')) return false;
+    $body.removeClass('preview-deferred mobile-view-chat chat-hidden');
+    $('.preview-toggle-chat').attr({
+        title: 'Expand preview',
+        'aria-label': 'Hide the chat panel',
+        'aria-expanded': 'true',
+    });
+    window.syncViewSeg?.();
+    return true;
+};
+
+// A project switch cancels the old turn's staged view without letting it leak
+// into the destination chat. showAppPreview/hideAppPreview will set that chat's
+// own view once its saved state has loaded.
+window.cancelPreviewTurn = function(chatId, turnSeq) {
+    if (deferredPreviewTurn && !previewTurnMatches(chatId, turnSeq)) return false;
+    deferredPreviewTurn = null;
+    return true;
+};
+
 /**
  * Mark the preview as needing a refresh because files changed. The actual
  * reload is deferred until the AI finishes its whole turn (see flushPreviewRefresh),
  * so the preview reloads once per modification, not once per file write.
  * No-op when the preview pane is not currently shown.
  */
-window.schedulePreviewRefresh = function() {
+window.schedulePreviewRefresh = function(state) {
     if (!$('body').hasClass('preview-active')) return;
     previewRefreshPending = true;
+    // Keep the chat in front as soon as a live app starts changing. Pass the
+    // originating turn so a write that finishes late cannot hide a newer chat.
+    window.deferPreviewForTurn?.(state?.currentChatId, state?.turnSeq);
 };
 
 /**
@@ -1065,16 +1133,17 @@ window.flushPreviewRefresh = flushPreviewRefresh;
 
 /**
  * Show a published app/site inside a browser-like preview pane.
- * The chat moves to the right and the preview fills the left side at full
- * height/width. Called by the publish_site tool — re-invoking it (i.e. when a
- * new version is published) refreshes the preview to show the latest version.
+ * During an active build, keep the chat in front and stage the iframe in the
+ * background so update_preview can verify it; the turn teardown reveals it.
  * @param {string} url - the URL of the published app/site to load
- * @param {{waitForReady?: boolean}} [opts] - when waitForReady is true, wait for
- *   the freshly-deployed content to propagate to the CDN (showing an overlay)
- *   before reloading; otherwise just (re)display the already-live site.
+ * @param {{waitForReady?: boolean, deferUntilTurnComplete?: boolean, chatId?: string, turnSeq?: number}} [opts]
+ *   waitForReady waits for CDN propagation before reloading. deferUntilTurnComplete
+ *   keeps the chat visible until the matching assistant turn finishes.
  */
 window.showAppPreview = function(url, opts) {
     opts = opts || {};
+    const deferUntilTurnComplete = opts.deferUntilTurnComplete === true
+        && window.deferPreviewForTurn?.(opts.chatId, opts.turnSeq) === true;
     let $pane = $('.preview-pane');
     if (!$pane.length) {
         $pane = $(`
@@ -1139,9 +1208,14 @@ window.showAppPreview = function(url, opts) {
     }
     window.currentPreviewUrl = url;
     $('body').addClass('preview-active');
-    // On mobile, default to showing the freshly-previewed app (not the chat).
-    $('body').removeClass('mobile-view-chat');
-    // Point both toolbar switchers at the App segment to match.
+    if (!deferUntilTurnComplete) {
+        // Restoring a saved project (or a non-turn preview open) should show the
+        // app immediately and clear any stale staged state from the prior chat.
+        window.cancelPreviewTurn?.(opts.chatId, opts.turnSeq);
+        $('body').removeClass('preview-deferred mobile-view-chat chat-hidden');
+    }
+    // A newly staged preview leaves the chat selected; otherwise the app is the
+    // default view on mobile, matching the existing preview-open behavior.
     window.syncViewSeg();
     // Reflect this chat's version history in the undo/redo toolbar buttons.
     window.updateVersionNavButtons?.();
@@ -1168,7 +1242,8 @@ window.showAppPreview = function(url, opts) {
 window.hideAppPreview = function() {
     // Supersede any in-flight propagation probe so it can't reload/clobber later.
     _previewRefreshSeq++;
-    $('body').removeClass('preview-active chat-hidden mobile-view-chat');
+    deferredPreviewTurn = null;
+    $('body').removeClass('preview-active preview-deferred chat-hidden mobile-view-chat');
     // The chat-toggle mirrors the chat-hidden state in its name and
     // aria-expanded (see its click handler). The class is gone now, and the
     // pane element is reused by the next showAppPreview, so without this a
@@ -3315,7 +3390,7 @@ window.resetPreviewErrorDedup = function () {
         $frame.on('load', onLoad);
 
         try {
-            window.schedulePreviewRefresh?.();
+            window.schedulePreviewRefresh?.(state);
             window.flushPreviewRefresh?.();
 
             // Wait for our reload to finish loading (or give up). Poll so a

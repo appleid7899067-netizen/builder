@@ -6578,3 +6578,28 @@ html[data-theme="dark"] .chat-history-collapse:hover { color: var(--text, #fff);
     .chat-history-collapse,
     .chat-history-collapse-chevron { transition: none; }
 }
+
+/* Keep the conversation and its progress checklist in front while a new or
+   changed app is still being built and verified. The iframe remains mounted
+   for update_preview; it is only hidden from the user until the turn finishes. */
+body.preview-active.preview-deferred .preview-pane {
+    display: flex !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+body.preview-active.preview-deferred .chat {
+    max-width: 680px;
+    width: 100%;
+    margin: 0 auto;
+    padding-left: 16px;
+    padding-right: 16px;
+}
+body.preview-active.preview-deferred .view-seg {
+    display: none !important;
+}
+@media (max-width: 900px) {
+    body.preview-active.preview-deferred .chat {
+        padding-left: 14px;
+        padding-right: 14px;
+    }
+}

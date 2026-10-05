@@ -1,154 +1,117 @@
 const MODEL_STORAGE_KEY = 'puter_builder_model';
-const FREE_MODELS = [
-    { id: 'qwen/qwen3.8-27b:free', name: 'Qwen3.8 27B · FREE', cost: { input: 0, output: 0 } },
-    { id: 'openrouter/free', name: 'OpenRouter Free Models Router · FREE', cost: { input: 0, output: 0 } },
-    { id: 'nvidia/nemotron-3-ultra-550b-a55b:free', name: 'NVIDIA Nemotron 3 Ultra 550B · FREE', cost: { input: 0, output: 0 } },
-    { id: 'nvidia/nemotron-3.5-lightning:free', name: 'NVIDIA Nemotron 3.5 Lightning · FREE', cost: { input: 0, output: 0 } },
-    { id: 'nvidia/nemotron-3-super-120b-a12b:free', name: 'NVIDIA Nemotron 3 Super 120B · FREE', cost: { input: 0, output: 0 } },
-    { id: 'google/gemma-4-31b-it:free', name: 'Google Gemma 4 31B · FREE', cost: { input: 0, output: 0 } },
-    { id: 'google/gemma-4-26b-a4b-it:free', name: 'Google Gemma 4 26B A4B · FREE', cost: { input: 0, output: 0 } },
-    { id: 'cohere/north-mini-code:free', name: 'Cohere North Mini Code · FREE', cost: { input: 0, output: 0 } },
-    { id: 'poolside/laguna-s-2.1:free', name: 'Poolside Laguna S 2.1 · FREE', cost: { input: 0, output: 0 } },
-    { id: 'poolside/laguna-xs-2.1:free', name: 'Poolside Laguna XS 2.1 · FREE', cost: { input: 0, output: 0 } },
-    { id: 'thinkingmachines/inkling:free', name: 'Thinking Machines Inkling · FREE', cost: { input: 0, output: 0 } },
-    { id: 'thinkingmachines/inkling-small:free', name: 'Thinking Machines Inkling Small · FREE', cost: { input: 0, output: 0 } },
-    { id: 'dots-studio/dots-3-note-preview:free', name: 'Dots Studio Dots3-Note Preview · FREE', cost: { input: 0, output: 0 } },
-    { id: 'inclusionai/ling-3.1-flash', name: 'InclusionAI Ling 3.1 Flash · FREE', cost: { input: 0, output: 0 } },
-    { id: 'inclusionai/ling-3.0-flash-sante:free', name: 'InclusionAI Ling 3.0 Flash Sante · FREE', cost: { input: 0, output: 0 } },
-    { id: 'apodex/apodex-1.1-mini:free', name: 'Apodex 1.1 Mini · FREE', cost: { input: 0, output: 0 } },
-    { id: 'liquid/lfm-2.5-2.6b:free', name: 'LiquidAI LFM2.5 2.6B · FREE', cost: { input: 0, output: 0 } },
-];
-window.FREE_MODELS = FREE_MODELS;
+const PRIMARY_FREE_MODEL_LIMIT = 3;
+const MODEL_CATALOG_TTL_MS = 2 * 60 * 1000;
+const EMPTY_MODEL_CATALOG_RETRY_MS = 15 * 1000;
+let FREE_MODEL_CATALOG = [];
+let AVAILABLE_FREE_MODELS = [];
+let _unavailableFreeModelIds = new Set();
+let _modelCatalogLoadedAt = 0;
+let _modelCatalogPromise = null;
+let MODEL = null;
 
-const QWEN_MODELS = [
-    // Free Qwen model first
-    { id: 'qwen/qwen3.8-27b:free', name: 'Qwen3.8 27B · FREE', cost: { input: 0, output: 0 } },
-
-    // Primary Qwen models
-    { id: 'qwen/qwen3.8-flash', name: 'Qwen3.8 Flash' },
-    { id: 'qwen/qwen3.8-max', name: 'Qwen3.8 Max' },
-    { id: 'qwen/qwen3.8-max-prime', name: 'Qwen3.8 Max Prime' },
-    { id: 'qwen/qwen3-coder-480b-a35b-instruct', name: 'Qwen3 Coder 480B A35B' },
-    { id: 'qwen/qwen3-coder-30b-a3b-instruct', name: 'Qwen3 Coder 30B A3B' },
-    { id: 'qwen/qwen3-coder-plus', name: 'Qwen3 Coder Plus' },
-    { id: 'qwen/qwen3-coder-flash', name: 'Qwen3 Coder Flash' },
-    { id: 'qwen/qwen3-coder-next', name: 'Qwen3 Coder Next' },
-    { id: 'qwen/qwen3.7-flash', name: 'Qwen3.7 Flash · Vision' },
-    { id: 'qwen/qwen3.7-plus', name: 'Qwen3.7 Plus' },
-    { id: 'qwen/qwen3-vl-flash', name: 'Qwen3-VL Flash · Vision' },
-    { id: 'qwen/qwen3-vl-30b-a3b-instruct', name: 'Qwen3 VL 30B · Vision' },
-    { id: 'qwen/qwen3-omni-30b-a3b-instruct', name: 'Qwen3 Omni 30B · Audio/Video' },
-    { id: 'qwen/qwen3.8-omni-flash', name: 'Qwen3.8 OmniFlash · Audio/Video' },
-    { id: 'qwen/qwen3.5-omni-flash', name: 'Qwen3.5 Omni Flash' },
-    { id: 'qwen/qwen3-32b', name: 'Qwen3 32B' },
-    { id: 'qwen/qwen3-8b', name: 'Qwen3 8B · Fast' },
-
-    // 20 additional Qwen models
-    { id: 'qwen/qwen3.8-2.4t-a95b', name: 'Qwen3.8 2.4T A95B' },
-    { id: 'qwen/qwen3.8-27b', name: 'Qwen3.8 27B' },
-    { id: 'qwen/qwen3.7-max', name: 'Qwen3.7 Max' },
-    { id: 'qwen/qwen3.6-flash', name: 'Qwen3.6 Flash' },
-    { id: 'qwen/qwen3.6-plus', name: 'Qwen3.6 Plus' },
-    { id: 'qwen/qwen3.6-35b-a3b', name: 'Qwen3.6 35B A3B' },
-    { id: 'qwen/qwen3.6-max-preview', name: 'Qwen3.6 Max Preview' },
-    { id: 'qwen/qwen3.6-27b', name: 'Qwen3.6 27B' },
-    { id: 'qwen/qwen3.5-plus-2026-04-20', name: 'Qwen3.5 Plus · 2026-04-20' },
-    { id: 'qwen/qwen3.5-plus-2026-02-15', name: 'Qwen3.5 Plus · 2026-02-15' },
-    { id: 'qwen/qwen3.5-122b-a10b', name: 'Qwen3.5 122B A10B' },
-    { id: 'qwen/qwen3.5-397b-a17b', name: 'Qwen3.5 397B A17B' },
-    { id: 'qwen/qwen3.5-35b-a3b', name: 'Qwen3.5 35B A3B' },
-    { id: 'qwen/qwen3.5-27b', name: 'Qwen3.5 27B' },
-    { id: 'qwen/qwen3-vl-235b-a22b-instruct', name: 'Qwen3 VL 235B A22B · Vision' },
-    { id: 'qwen/qwen3-max', name: 'Qwen3 Max' },
-    { id: 'qwen/qwen-plus-2025-07-28', name: 'Qwen Plus 0728' },
-    { id: 'qwen/qwen-plus-2025-07-28:thinking', name: 'Qwen Plus 0728 · Thinking' },
-    { id: 'qwen/qwen3-14b', name: 'Qwen3 14B' },
-    { id: 'qwen/qwen3-235b-a22b', name: 'Qwen3 235B A22B' },
-    { id: 'qwen/qwen-2.5-coder-32b-instruct', name: 'Qwen2.5 Coder 32B Instruct' },
-    { id: 'qwen/qwen-2.5-7b-instruct', name: 'Qwen2.5 7B Instruct' },
-    { id: 'qwen/qwen-2.5-72b-instruct', name: 'Qwen2.5 72B Instruct' },
-];
-window.QWEN_MODELS = QWEN_MODELS;
-
-let MODEL = (() => {
+function persistSelectedFreeModel(modelId) {
     try {
-        return localStorage.getItem(MODEL_STORAGE_KEY) || FREE_MODELS[0].id;
-    } catch (e) {
-        return FREE_MODELS[0].id;
-    }
-})();
-
-function isModelFree(m) {
-    if (!m) return false;
-    const id = String(m.id || '');
-    const name = String(m.name || '');
-    if (id.endsWith(':free') || id === 'openrouter/free' || /\bfree\b/i.test(name)) return true;
-    if (m.cost && m.cost.input === 0 && m.cost.output === 0) return true;
-    if (m.costs && m.costs.prompt === 0 && m.costs.completion === 0) return true;
-    if (m.costs && m.costs.prompt_tokens === 0 && m.costs.completion_tokens === 0) return true;
-    return false;
+        if (modelId) localStorage.setItem(MODEL_STORAGE_KEY, modelId);
+        else localStorage.removeItem(MODEL_STORAGE_KEY);
+    } catch (e) { /* storage blocked */ }
 }
 
-function modelSortRank(m) {
-    const id = String(m?.id || '').toLowerCase();
-    const name = String(m?.name || '').toLowerCase();
-    const free = isModelFree(m);
-    const isQwen = id.includes('qwen') || name.includes('qwen');
-    if (free && isQwen) return 0;
-    if (free) return 1;
-    if (isQwen) return 2;
-    return 3;
+function readSavedFreeModel() {
+    try { return localStorage.getItem(MODEL_STORAGE_KEY); }
+    catch (e) { return null; }
 }
 
-function renderModelPickerOptions(models) {
+function updatePrimaryFreeModels() {
+    const eligible = FREE_MODEL_CATALOG.filter(model =>
+        !_unavailableFreeModelIds.has(String(model.id)));
+    AVAILABLE_FREE_MODELS = window.FreeModelDiscovery
+        ? window.FreeModelDiscovery.selectPrimary(eligible, PRIMARY_FREE_MODEL_LIMIT)
+        : [];
+    return AVAILABLE_FREE_MODELS;
+}
+
+function renderModelPickerOptions(models, emptyLabel = 'No free models currently available') {
     const select = document.querySelector('.model-picker-select');
     if (!select) return;
-    const seen = new Set();
-    const list = [];
-    const combined = [...FREE_MODELS, ...QWEN_MODELS, ...(Array.isArray(models) ? models : [])];
-    for (const m of combined) {
-        if (!m || !m.id) continue;
-        const id = String(m.id);
-        if (/claude|anthropic/i.test(id + ' ' + String(m.name || ''))) continue;
-        const normKey = id.replace(/^(openrouter:|alibaba:)/i, '').toLowerCase();
-        if (seen.has(id) || seen.has(normKey)) continue;
-        seen.add(id);
-        seen.add(normKey);
-        list.push(m);
-    }
-    list.sort((a, b) => modelSortRank(a) - modelSortRank(b));
-    select.replaceChildren(...list.map(m => {
+    const list = Array.isArray(models) ? models : [];
+    select.replaceChildren();
+
+    if (!list.length) {
         const option = document.createElement('option');
-        option.value = m.id;
-        const isFree = isModelFree(m);
-        const label = m.name || m.id;
-        option.textContent = isFree && !/free/i.test(label) ? `${label} · FREE` : label;
-        return option;
-    }));
-    let saved = null;
+        option.value = '';
+        option.textContent = emptyLabel;
+        select.appendChild(option);
+        select.disabled = true;
+        select.title = emptyLabel;
+        MODEL = null;
+        if (emptyLabel !== 'Checking free models…') persistSelectedFreeModel(null);
+        return;
+    }
+
+    for (const model of list) {
+        const option = document.createElement('option');
+        option.value = model.id;
+        const label = model.name || model.id;
+        option.textContent = /\bfree\b/i.test(label) ? label : `${label} · FREE`;
+        select.appendChild(option);
+    }
+
+    const saved = readSavedFreeModel();
+    const chosen = list.find(model => model.id === MODEL)
+        || list.find(model => model.id === saved)
+        || list[0];
+    MODEL = chosen.id;
+    select.value = MODEL;
+    select.disabled = false;
+    select.title = 'Choose one of the free models detected as available';
+    persistSelectedFreeModel(MODEL);
+}
+
+async function refreshFreeModelCatalog({ force = false } = {}) {
+    if (_modelCatalogPromise) return _modelCatalogPromise;
+    const cacheAge = Date.now() - _modelCatalogLoadedAt;
+    const cacheTtl = AVAILABLE_FREE_MODELS.length
+        ? MODEL_CATALOG_TTL_MS
+        : EMPTY_MODEL_CATALOG_RETRY_MS;
+    if (!force && _modelCatalogLoadedAt && cacheAge < cacheTtl) {
+        return AVAILABLE_FREE_MODELS;
+    }
+    if (!window.puter?.ai?.listModels) {
+        throw new Error('Puter AI model discovery is not available.');
+    }
+
+    _modelCatalogPromise = (async () => {
+        const liveModels = await puter.ai.listModels();
+        FREE_MODEL_CATALOG = window.FreeModelDiscovery
+            ? window.FreeModelDiscovery.findFreeModels(liveModels)
+            : [];
+        _unavailableFreeModelIds.clear();
+        _modelCatalogLoadedAt = Date.now();
+        const primary = updatePrimaryFreeModels();
+        renderModelPickerOptions(primary);
+        return primary;
+    })();
     try {
-        saved = localStorage.getItem(MODEL_STORAGE_KEY);
-    } catch (e) { /* storage blocked */ }
-    const chosen = list.find(m => m.id === saved) || list.find(m => m.id === MODEL) || list[0];
-    if (chosen) {
-        MODEL = chosen.id;
-        select.value = MODEL;
-        try {
-            localStorage.setItem(MODEL_STORAGE_KEY, MODEL);
-        } catch (e) { /* storage blocked */ }
+        return await _modelCatalogPromise;
+    } finally {
+        _modelCatalogPromise = null;
     }
 }
 
 async function initializeModelPicker() {
     const select = document.querySelector('.model-picker-select');
-    if (!select) return;
-    renderModelPickerOptions([]);
-    if (!window.puter?.ai?.listModels) return;
+    if (!select) return [];
+    if (!AVAILABLE_FREE_MODELS.length) renderModelPickerOptions([], 'Checking free models…');
     try {
-        const liveModels = await puter.ai.listModels();
-        renderModelPickerOptions(liveModels);
+        return await refreshFreeModelCatalog({ force: true });
     } catch (e) {
-        console.warn('Could not load Puter models:', e);
+        console.warn('Could not discover free Puter models:', e);
+        if (!AVAILABLE_FREE_MODELS.length) {
+            renderModelPickerOptions([], 'Free models unavailable — retry when online');
+        } else {
+            renderModelPickerOptions(AVAILABLE_FREE_MODELS);
+        }
+        return AVAILABLE_FREE_MODELS;
     }
 }
 
@@ -157,34 +120,45 @@ function bindModelPicker() {
     if (!select || select.dataset.bound) return;
     select.dataset.bound = '1';
     select.addEventListener('change', () => {
-        if (!select.value) return;
-        MODEL = select.value;
-        try {
-            localStorage.setItem(MODEL_STORAGE_KEY, MODEL);
-        } catch (e) { /* storage blocked */ }
+        if (isProcessing) {
+            select.value = MODEL || '';
+            return;
+        }
+        const chosen = AVAILABLE_FREE_MODELS.find(model => model.id === select.value);
+        if (!chosen || !window.FreeModelDiscovery?.isUsableChatModel(chosen)) return;
+        MODEL = chosen.id;
+        persistSelectedFreeModel(MODEL);
     });
 }
-const FALLBACK_QWEN_MODELS = [
-    'qwen/qwen3.8-27b:free',
-    'openrouter/free',
-    'nvidia/nemotron-3-ultra-550b-a55b:free',
-    'google/gemma-4-31b-it:free',
-    'qwen/qwen3.8-flash',
-    'qwen/qwen3-coder-flash',
-    'qwen/qwen3.7-flash',
-];
 
-function selectFallbackQwenModel(currentModel) {
-    const next = FALLBACK_QWEN_MODELS.find(id => id !== currentModel) || FALLBACK_QWEN_MODELS[0];
-    if (!next) return currentModel;
-    MODEL = next;
+function markFreeModelUnavailable(modelId) {
+    if (!modelId) return;
+    _unavailableFreeModelIds.add(String(modelId));
+    const primary = updatePrimaryFreeModels();
+    renderModelPickerOptions(primary, 'No free models currently available');
+}
+
+function selectNextFreeModel(excludedModelIds = new Set()) {
+    const next = AVAILABLE_FREE_MODELS.find(model => !excludedModelIds.has(String(model.id)));
+    if (!next) return null;
+    MODEL = next.id;
+    persistSelectedFreeModel(MODEL);
     const select = document.querySelector('.model-picker-select');
     if (select) select.value = MODEL;
-    try {
-        localStorage.setItem(MODEL_STORAGE_KEY, MODEL);
-    } catch (e) { /* storage blocked */ }
+    return next;
+}
+
+function getActiveFreeModelId() {
+    if (AVAILABLE_FREE_MODELS.some(model => model.id === MODEL)) return MODEL;
+    const first = AVAILABLE_FREE_MODELS[0];
+    if (!first) return null;
+    MODEL = first.id;
+    persistSelectedFreeModel(MODEL);
+    const select = document.querySelector('.model-picker-select');
+    if (select) select.value = MODEL;
     return MODEL;
 }
+
 window.initializeModelPicker = initializeModelPicker;
 window.bindModelPicker = bindModelPicker;
 let system_prompt
@@ -3081,6 +3055,9 @@ function terminateActiveTurn() {
 // next send was swallowed as an abort), the input kept its disabled styling,
 // and the previous turn's checklist lingered/re-rendered into the new chat.
 function resetChatUIForSwitch() {
+    // A staged preview belongs to the chat being left; cancel its turn token so
+    // a late tool/finally cannot reveal it over the destination project.
+    window.cancelPreviewTurn?.();
     // The in-flight controller (if any) was already aborted by
     // terminateActiveTurn(); clear the processing flags + ref so the new chat is
     // sendable right away and the next send starts a fresh request.
@@ -3367,6 +3344,24 @@ function isTransientTurnError(error) {
         'econnreset', 'socket hang up', 'connection reset', 'connection closed',
     ];
     return TRANSIENT.some(k => text.includes(k));
+}
+
+// A catalog entry can go stale between discovery and the request (for example,
+// a provider removes a free variant). Treat only clearly model-specific errors
+// as a reason to discard that entry and try another verified-free model.
+function isUnavailableFreeModelError(error) {
+    if (error?.error?.delegate === 'usage-limited-chat') return false;
+    const text = extractErrorText(error).toLowerCase();
+    if (!text || /(usage limit|quota exceeded|insufficient (?:credits?|funds?)|out of credits?)/.test(text)) return false;
+    const MODEL_UNAVAILABLE = [
+        'model not found', 'unknown model', 'model does not exist',
+        'model unavailable', 'model is unavailable', 'model not available',
+        'unsupported model', 'model is not supported', 'invalid model',
+        'no model found', 'no matching model', 'no endpoints found',
+        'does not support tool calling', 'tool calling is not supported',
+        'function calling is not supported', 'does not support streaming',
+    ];
+    return MODEL_UNAVAILABLE.some(phrase => text.includes(phrase));
 }
 
 // Exponential backoff base (ms) for retry N (0-indexed): 1s, 2s, 4s, 8s, capped.
@@ -3989,6 +3984,26 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
         return;
     }
 
+    // Refresh the live model catalog before consuming the composer. A stale
+    // localStorage value is never trusted: only a model currently reported as
+    // free by Puter can be used for this turn.
+    try {
+        let freeModels = await refreshFreeModelCatalog({ force: !AVAILABLE_FREE_MODELS.length });
+        if (!freeModels.length) freeModels = await refreshFreeModelCatalog({ force: true });
+        if (!freeModels.length || !getActiveFreeModelId()) {
+            window.showToast?.('No free AI models are available right now. Please try again shortly.',
+                { type: 'error', key: 'no-free-ai-model', throttleMs: 5000 });
+            _sendSetupInFlight = false;
+            return;
+        }
+    } catch (e) {
+        console.warn('Could not refresh free AI models before sending:', e);
+        window.showToast?.('Could not check free AI models. Check your connection and try again.',
+            { type: 'error', key: 'free-ai-model-check-failed', throttleMs: 5000 });
+        _sendSetupInFlight = false;
+        return;
+    }
+
     // Whether this send takes its text FROM the composer (a typed or voice
     // message) — as opposed to a programmatic send that brings its own text:
     // the preview's automatic error-fix report, the Issues panel's batch, a
@@ -4051,6 +4066,10 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
     // is attributed to the right project even if the user switches chats mid-turn.
     const turnChatId = currentChatId;
     const turnAppDir = currentAppDir;
+    // Give preview presentation the same turn identity as streaming/tool work:
+    // changed or newly-published apps stay in the background until this exact
+    // turn has finished and its final chat reply is visible.
+    window.beginPreviewTurn?.(turnChatId, turnSeq);
     // Stable per-turn save context. `chatHistory` is captured by reference — every
     // message pushed during the turn (user, assistant text, tool_use, tool_result,
     // and the error marker on the catch path) mutates THIS same array — so saving
@@ -4359,6 +4378,7 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
         // partial bubble. See the MAX_TURN_RETRIES / isTransientTurnError block.
         const turnTools = window.getTurnTools();
         let context = null;
+        const attemptedFreeModelIds = new Set();
         while (true) {
             // A fresh AbortController per attempt. This is also the guard for a chat
             // switch during turn setup — terminateActiveTurn() may have run before
@@ -4371,7 +4391,10 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
             // from "a stale turn unwound late while a NEWER turn is streaming"
             // — a late unwind must not clear the live turn's watchdog flag.
             const attemptController = abortController;
+            let attemptModel = null;
             try {
+                attemptModel = getActiveFreeModelId();
+                if (!attemptModel) throw new Error('No free AI model is currently available.');
                 // Mark the attempt live for the background-freeze watchdog
                 // (mobile-lifecycle-keepalive above): it only ever aborts an
                 // attempt that is actually awaiting the stream, never a turn
@@ -4381,7 +4404,7 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
                 // against the signal locally (abortableAwait) — otherwise an
                 // abort couldn't unstick a connection that dies mid-open.
                 const stream = await abortableAwait(puter.ai.chat(prepareHistoryForAI(turnSaveContext.chatHistory), {
-                    model: MODEL,
+                    model: attemptModel,
                     tools: turnTools,
                     stream: true,
                     reasoning_effort: 'medium',
@@ -4398,7 +4421,7 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
                 // (handleToolCalls) keep the chat flagged in-progress until the
                 // end-of-turn save clears it — this is what makes a refresh during a
                 // long multi-round build resumable.
-                context = {abortController, tools: turnTools, chatHistory: turnSaveContext.chatHistory, currentMessage: null, currentMessageContent: '', currentChatId: turnChatId, appDir: turnAppDir, interrupted: true};
+                context = {abortController, tools: turnTools, chatHistory: turnSaveContext.chatHistory, currentMessage: null, currentMessageContent: '', currentChatId: turnChatId, appDir: turnAppDir, turnSeq, deferPreviewUntilTurnComplete: true, interrupted: true};
                 await handleMessageStream(stream, context);
                 if (abortController === attemptController) _turnAwaitingStream = false;
                 break; // stream drained (completed, or aborted/switched — handled below)
@@ -4415,16 +4438,19 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
                 const stallRecovery = _stallRecovery && !shouldStop
                     && !activeTurnInterrupted && turnChatId === currentChatId;
                 _stallRecovery = false;
+                const unavailableModel = !stallRecovery && isUnavailableFreeModelError(streamError);
                 if (!stallRecovery) {
-                    // Only OUR business: a genuine transient provider failure while
-                    // this turn is still the active, non-stopped chat. A user Stop, a
-                    // chat switch, or a non-transient error all propagate to the outer
-                    // catch/finally exactly as before.
+                    // Only OUR business: a transient provider hiccup, or a clear
+                    // model-specific availability error, while this turn is still
+                    // active. User Stop, chat switches, quota errors, and unrelated
+                    // failures still propagate unchanged.
                     const active = !shouldStop && !activeTurnInterrupted
                         && turnChatId === currentChatId && !isAborted(abortController);
-                    if (!active || !isTransientTurnError(streamError)) {
+                    if (!active || (!isTransientTurnError(streamError) && !unavailableModel)) {
                         throw streamError;
                     }
+                    if (attemptModel) attemptedFreeModelIds.add(attemptModel);
+                    if (unavailableModel) markFreeModelUnavailable(attemptModel);
                 }
                 // Drop any partial, unsaved narration bubble before resuming.
                 removeUncommittedBubble(context);
@@ -4450,6 +4476,17 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
                     window.track?.('Build Retry Exhausted');
                     break;
                 }
+                const nextFreeModel = attemptedFreeModelIds.size < PRIMARY_FREE_MODEL_LIMIT
+                    ? selectNextFreeModel(attemptedFreeModelIds)
+                    : null;
+                if (!nextFreeModel) {
+                    clearRetryStatus();
+                    retryGaveUp = true;
+                    gaveUpBannerText = 'The available free models could not complete this request. Resume to try again later.';
+                    window.track?.('Build Retry Exhausted');
+                    break;
+                }
+
                 const delayMs = Math.round(retryBackoffBaseMs(attempt) * (0.85 + Math.random() * 0.3));
                 // Failures while the page is hidden are counted separately (see
                 // hiddenRetries above) so a backgrounded phone can't burn the
@@ -4457,8 +4494,9 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
                 const hiddenRetry = document.visibilityState === 'hidden'
                     && hiddenRetries < MAX_HIDDEN_TURN_RETRIES;
                 if (hiddenRetry) hiddenRetries++; else attempt++;
-                selectFallbackQwenModel(MODEL);
-                showRetryStatus(Math.max(attempt, 1), MAX_TURN_RETRIES);
+                const nextName = nextFreeModel.name || nextFreeModel.id;
+                showRetryStatus(Math.max(attempt, 1), PRIMARY_FREE_MODEL_LIMIT,
+                    `Retrying with another free model: ${nextName}…`);
                 window.track?.('Build Retry', { attempt, ...(hiddenRetry && { hidden: true }) });
                 const proceed = await waitForRetry(delayMs, turnChatId);
                 clearRetryStatus();
@@ -4555,7 +4593,7 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
                         await window.withFileLock(indexPath, () => window.writeFileVerified(indexPath, htmlCode));
                         window.markProjectModified?.('write', turnChatId);
                         window.recordPreviewChange?.(indexPath);
-                        window.schedulePreviewRefresh?.();
+                        window.schedulePreviewRefresh?.(context || { currentChatId: turnChatId, turnSeq });
                         publishDir = turnAppDir;
                     }
                 }
@@ -4567,6 +4605,8 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
                         currentChatId: turnChatId,
                         appDir: turnAppDir,
                         abortController,
+                        turnSeq,
+                        deferPreviewUntilTurnComplete: true,
                     });
                 }
             } catch (autoPreviewErr) {
@@ -4742,8 +4782,11 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
     if (!supersededInChat) {
         // Pass the turn's chat id so a stale teardown (the user switched chats
         // while this turn was finishing) no-ops instead of clobbering the new
-        // chat's UI.
+        // chat's UI. A successful turn reveals as soon as its final reply and
+        // checklist are complete; this is the fallback reveal for an error or
+        // interruption, and a no-op if success already revealed it.
         resetUIState(turnChatId);
+        if (turnChatId === currentChatId) window.finishPreviewTurn?.(turnChatId, turnSeq);
     }
     // The turn is over — let the screen sleep again (no-op if a newer turn has
     // already started and still wants the lock).
@@ -4813,10 +4856,8 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
 // stale result (the user switched chats or started a new turn meanwhile) is
 // discarded rather than rendered into the wrong place.
 
-// A fast, cheap model is plenty for short follow-up ideas (and keeps this off
-// the critical path of the main, more capable build model).
-const SUGGESTION_MODEL = 'qwen/qwen3.8-flash';
-
+// Auxiliary chat requests (ideas, project names, and version labels) use the
+// currently selected, catalog-verified free model too; no hidden paid model IDs.
 // Bumped whenever suggestions are cleared or a new generation starts, so an
 // older in-flight generation can detect it has been superseded and bow out.
 let _suggestSeq = 0;
@@ -5168,6 +5209,8 @@ $(window).on('resize', () => {
 
 async function generateContinueSuggestions(turnSaveContext) {
     if (!turnSaveContext) return;
+    const suggestionModel = getActiveFreeModelId();
+    if (!suggestionModel) return;
     // Remember the context so the trailing "regenerate" chip can re-run against
     // the same conversation/app state on demand.
     _lastSuggestionContext = turnSaveContext;
@@ -5199,7 +5242,7 @@ async function generateContinueSuggestions(turnSaveContext) {
                 { role: 'system', content: SUGGESTION_SYSTEM_PROMPT },
                 { role: 'user', content: `Conversation so far:\n\n${transcript}${appSection}${avoidSection}\n\nSuggest 5 next steps.` },
             ],
-            { model: SUGGESTION_MODEL }
+            { model: suggestionModel }
         );
 
         // Discard if superseded: a newer generation/clear ran, the user switched
@@ -5223,11 +5266,8 @@ async function generateContinueSuggestions(turnSaveContext) {
 // ---- Automatic project naming --------------------------------------------
 // The first time a project actually produces a built app (its first publish —
 // see publish_site), give it a relevant, human-friendly name with the AI, unless
-// the user has already named it themselves. Reuses the fast suggestion model and
-// the transcript / app-HTML snapshot helpers above.
-
-// Distinct from the user prose suggestions, but the same lightweight model.
-const PROJECT_NAME_MODEL = SUGGESTION_MODEL;
+// the user has already named it themselves. Uses the transcript / app-HTML
+// snapshot helpers above and the currently selected free model.
 
 const PROJECT_NAME_SYSTEM_PROMPT = `You name web-app projects for the sidebar of an AI app builder.
 
@@ -5268,6 +5308,8 @@ function sanitizeProjectName(text) {
 // one), guarded to run once per project, and never throws into the caller.
 async function maybeAutoNameProject(context) {
     if (!context || !window.puter || !puter.ai) return;
+    const nameModel = getActiveFreeModelId();
+    if (!nameModel) return;
     const chatId = context.currentChatId;
     if (!chatId) return;
     if (_autoNamingInFlight.has(chatId) || _aiProjectTitles.has(chatId)) return;
@@ -5287,7 +5329,7 @@ async function maybeAutoNameProject(context) {
                 { role: 'system', content: PROJECT_NAME_SYSTEM_PROMPT },
                 { role: 'user', content: `Conversation so far:\n\n${transcript || '(no conversation text)'}${appSection}\n\nName this project.` },
             ],
-            { model: PROJECT_NAME_MODEL }
+            { model: nameModel }
         );
         const name = sanitizeProjectName(extractAIResponseText(response));
         if (!name) return;
@@ -5343,10 +5385,10 @@ async function applyAiProjectTitle(chatId, title) {
 // ---- Version-snapshot labelling ------------------------------------------
 // Each version-history snapshot needs a short label. The fallback (in
 // versions.js) is the truncated user message, which reads poorly for long or
-// rambly requests. This asks the fast suggestion model for a tiny description of
-// what the turn actually changed, so the panel reads like a changelog
+// rambly requests. This asks the currently selected free model for a tiny
+// description of what the turn changed, so the panel reads like a changelog
 // ("Add dark mode toggle") instead of a sentence fragment. Reuses the same
-// lightweight model + sanitiser as project naming.
+// free-model selection and sanitiser as project naming.
 
 const VERSION_LABEL_SYSTEM_PROMPT = `You label snapshots in the version history of an AI app builder. Each snapshot is the state of the app after one round of changes.
 
@@ -5365,6 +5407,8 @@ Reply with ONLY the label — nothing else.`;
 // context = { userMessage, assistantSummary }.
 async function generateVersionLabel(context) {
     if (!context || !window.puter || !puter.ai) return '';
+    const labelModel = getActiveFreeModelId();
+    if (!labelModel) return '';
     const userMessage = (context.userMessage || '').trim();
     const assistantSummary = (context.assistantSummary || '').trim();
     if (!userMessage && !assistantSummary) return '';
@@ -5377,7 +5421,7 @@ async function generateVersionLabel(context) {
                 { role: 'system', content: VERSION_LABEL_SYSTEM_PROMPT },
                 { role: 'user', content: `${parts.join('\n\n')}\n\nLabel this change.` },
             ],
-            { model: SUGGESTION_MODEL }
+            { model: labelModel }
         );
         // sanitizeProjectName strips wrapping quotes/markdown, collapses
         // whitespace, and caps the length — exactly the cleanup a label needs.

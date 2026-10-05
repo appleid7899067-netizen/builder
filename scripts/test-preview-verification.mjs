@@ -64,7 +64,7 @@ check('ui: verifyPreview returns no-preview when no pane is open',
 check('tool: awaits window.verifyPreview', TOOL.includes('await window.verifyPreview(state)'));
 check('tool: falls back to the plain refresh when verify is unavailable',
     TOOL.includes("typeof window.verifyPreview !== 'function'") &&
-    TOOL.includes('window.schedulePreviewRefresh?.();') &&
+    TOOL.includes('window.schedulePreviewRefresh?.(state);') &&
     TOOL.includes('window.flushPreviewRefresh?.();'));
 check('tool: only surfaces a verification field on confirmed errors',
     TOOL.includes("health.status !== 'errors'") && TOOL.includes('return { success: true };'));
