@@ -71,13 +71,36 @@
     function isUsableChatModel(model) {
         if (!model || typeof model !== 'object' || !String(model.id || '').trim()) return false;
         const saysFalse = value => value === false || value === 0 || String(value).toLowerCase() === 'false';
+        const saysTrue = value => value === true || value === 1 || String(value).toLowerCase() === 'true';
         if (saysFalse(model.tool_call) || saysFalse(model.supports_tools)
             || saysFalse(model.supports_tool_call) || saysFalse(model.streaming)
             || saysFalse(model.supports_streaming)) return false;
 
+        // Puter Builder sends streaming tool calls on every build turn. Reject
+        // entries that explicitly advertise a non-chat or non-tool capability.
+        if (saysFalse(model.chat) || saysFalse(model.supports_chat)
+            || saysFalse(model.text_generation) || saysFalse(model.supports_text)) return false;
+        if (model.capabilities && typeof model.capabilities === 'object') {
+            if (saysFalse(model.capabilities.chat) || saysFalse(model.capabilities.text)) return false;
+            if (Object.prototype.hasOwnProperty.call(model.capabilities, 'tools')
+                && saysFalse(model.capabilities.tools)) return false;
+            if (Object.prototype.hasOwnProperty.call(model.capabilities, 'streaming')
+                && saysFalse(model.capabilities.streaming)) return false;
+        }
+
         const input = model.modalities && model.modalities.input;
         if (Array.isArray(input) && !input.some(modality => String(modality).toLowerCase() === 'text')) return false;
-        if (typeof input === 'string' && !/\btext\b/i.test(input)) return false;
+        if (typeof input === 'string' && !/\\btext\\b/i.test(input)) return false;
+        const output = model.modalities && model.modalities.output;
+        if (Array.isArray(output) && !output.some(modality => /text/i.test(String(modality)))) return false;
+        if (typeof output === 'string' && !/\\btext\\b/i.test(output)) return false;
+
+        // If the provider explicitly says the model cannot use tools, it is not
+        // a safe Builder candidate even when its pricing is free.
+        if (model.tool_call != null && !saysTrue(model.tool_call)) return false;
+        if (model.supports_tools != null && !saysTrue(model.supports_tools)) return false;
+        if (model.supports_tool_call != null && !saysTrue(model.supports_tool_call)) return false;
+
         return isFreeModel(model);
     }
 
