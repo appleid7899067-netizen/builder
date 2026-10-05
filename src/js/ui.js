@@ -281,6 +281,7 @@ function renderSkeleton() {
     // is shown/hidden by `.chat.active` thereafter.
     renderStarterPrompts();
     window.bindModelPicker?.();
+    window.bindChatModeToggle?.();
     window.initializeModelPicker?.();
 }
 
