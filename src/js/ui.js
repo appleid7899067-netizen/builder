@@ -192,7 +192,7 @@ function renderSkeleton() {
         // hero centered in the first viewport while the community feed peeks
         // above the fold below it.
         h += `<div class="home-hero">`;
-        h += `<div class="chat-tagline"><a class="chat-tagline-logo" href="/"><img class="chat-tagline-icon" src="/lion-logo.svg" alt="SILELO"></a><h1 class="chat-tagline-text">Build with SILELO AI</h1></div>`;
+        h += `<div class="chat-tagline"><a class="chat-tagline-logo" href="/"><img class="chat-tagline-icon" src="/silelo-logo.svg" alt="SILELO"></a><h1 class="chat-tagline-text">Build with SILELO AI</h1></div>`;
         h += `<div class="chat-tagline-sub">Describe your idea. SILELO turns it into a working app.</div>`;
         h += `<div class="chat-input">`;
             // Icon-only controls carry an accessible name (aria-label / title): a

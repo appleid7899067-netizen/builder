@@ -3,20 +3,15 @@
 <desc>Abstract S signature mark for SILELO AI Builder</desc>
 <defs>
   <linearGradient id="s" x1="92" y1="78" x2="420" y2="438" gradientUnits="userSpaceOnUse">
-    <stop stop-color="#c084fc"/>
-    <stop offset=".48" stop-color="#00ff9d"/>
-    <stop offset="1" stop-color="#b7ffd9"/>
+    <stop stop-color="#c084fc"/><stop offset=".48" stop-color="#00ff9d"/><stop offset="1" stop-color="#b7ffd9"/>
   </linearGradient>
   <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
-    <feGaussianBlur stdDeviation="9" result="blur"/>
-    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    <feGaussianBlur stdDeviation="9" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
   </filter>
 </defs>
 <rect width="512" height="512" rx="116" fill="#090d13"/>
-<path d="M374 112c-28-25-67-39-111-39-72 0-128 39-128 91 0 47 42 69 122 87 58 13 83 26 83 55 0 31-32 55-81 55-49 0-88-18-119-51"
- fill="none" stroke="url(#s)" stroke-width="31" stroke-linecap="round" filter="url(#glow)"/>
-<path d="M357 105c-23-18-55-28-91-28-64 0-113 32-113 76 0 40 37 57 111 74 69 16 103 36 103 73 0 46-43 79-105 79-57 0-104-22-139-59"
- fill="none" stroke="#f4fff9" stroke-opacity=".9" stroke-width="5" stroke-linecap="round"/>
+<path d="M374 112c-28-25-67-39-111-39-72 0-128 39-128 91 0 47 42 69 122 87 58 13 83 26 83 55 0 31-32 55-81 55-49 0-88-18-119-51" fill="none" stroke="url(#s)" stroke-width="31" stroke-linecap="round" filter="url(#glow)"/>
+<path d="M357 105c-23-18-55-28-91-28-64 0-113 32-113 76 0 40 37 57 111 74 69 16 103 36 103 73 0 46-43 79-105 79-57 0-104-22-139-59" fill="none" stroke="#f4fff9" stroke-opacity=".9" stroke-width="5" stroke-linecap="round"/>
 <path d="M116 397c70 37 167 35 238-5" fill="none" stroke="#00ff9d" stroke-width="5" stroke-linecap="round" stroke-dasharray="3 14"/>
 <text x="256" y="452" text-anchor="middle" fill="#c084fc" font-family="Arial, Helvetica, sans-serif" font-size="25" font-weight="700" letter-spacing="9">SILELO</text>
 </svg>
