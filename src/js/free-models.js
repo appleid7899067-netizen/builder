@@ -123,6 +123,9 @@
         // Keep the visible free roster focused on preferred Builder families.
         // Other verified-free families remain available as fallbacks.
         if (/\b(?:yandex|nex)\b/.test(haystack)) return 99;
+        // Prefer the requested low-cost Builder families when Puter exposes them.
+        // Only catalog entries that pass the verified-free and tool/streaming
+        // checks below can enter the pool, so we never invent an unavailable ID.
         if (/qwen/.test(haystack)) return 0;
         if (/deepseek/.test(haystack)) return 1;
         if (/\b(?:llama|mistral|gemma)\b/.test(haystack)) return 2;
