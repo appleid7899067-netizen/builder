@@ -61,7 +61,7 @@ const catalog = [
     { ...deepseek, id: 'vendor/no-tools:free', tool_call: false },
 ];
 const found = discovery.findFreeModels({ models: catalog });
-check('accepts the listModels { models: [...] } response shape', found.length === 1);
+check('accepts the listModels { models: [...] } response shape', found.length === 2 && found.some(model => model.id === qwen.id) && found.some(model => model.id === gemma.id));
 check('excludes paid and unsupported models from discovery', found.every(model => model.id !== 'vendor/paid-model' && model.id !== 'vendor/no-tools:free'));
 check('sorts explicit tool-capable options ahead of unknown capabilities', found[0].tool_call === true);
 check('deduplicates repeated model IDs case-insensitively', discovery.findFreeModels([gemma, { ...gemma, id: gemma.id.toUpperCase() }]).length === 1);
