@@ -3903,6 +3903,10 @@ window.settleComposerDraftIdentity = settleComposerDraftIdentity;
 // ===== composer-drafts (end) =====
 
 async function sendChatMessage(userInput = null, skipAddToHistory = false, opts = {}) {
+    // Reset the handoff ring for each new user turn. A continuation within
+    // this turn keeps the same workspace and history.
+    resetContinuousBuildHandoff();
+
     // Resume an interrupted build: re-send the existing (sanitized) conversation
     // so the model picks up where it left off, instead of starting a new turn
     // from a fresh user prompt. Set by the "Resume" banner (see resumeBuild /
