@@ -485,7 +485,7 @@ function openGithubWorkspace() {
     if (githubWorkspaceToken()) tokenInput.placeholder = 'Token พร้อมใช้งานใน session นี้';
 
     function readConfig() {
-        const raw = repoInput.value.trim().replace(/^https?:\\/\\/github\\.com\\//i, '').replace(/\\.git$/i, '');
+        const raw = repoInput.value.trim().replace(/^https?:\/\/github\.com\//i, '').replace(/\\.git$/i, '');
         const parts = raw.split('/').filter(Boolean);
         if (parts.length !== 2) throw new Error('ใส่ Repository เป็น owner/repository');
         const config = saveGithubWorkspaceConfig({ owner: parts[0], repo: parts[1], branch: branchInput.value });
@@ -530,7 +530,7 @@ function openGithubWorkspace() {
             for (const file of files) {
                 const rawPath = file.webkitRelativePath || file.name;
                 const path = rawPath.split('/').filter(Boolean).filter(p => p !== 'node_modules' && p !== '.git' && p !== 'dist').join('/');
-                if (!path || /(^|\\/)(node_modules|\\.git|dist)(\\/|$)/.test(path)) continue;
+                if (!path || /(^|\/)(node_modules|\.git|dist)(\/|$)/.test(path)) continue;
                 const content = await file.text();
                 const encoded = btoa(unescape(encodeURIComponent(content)));
                 const apiPath = '/repos/' + encodeURIComponent(config.owner) + '/' + encodeURIComponent(config.repo) + '/contents/' + path.split('/').map(encodeURIComponent).join('/');
