@@ -4730,7 +4730,6 @@ $(document).on('click', '.new-chat', async function(e) {
 $(document).on('click', '.clear-chat-history-btn', async function(e) {
     e.preventDefault();
     if (typeof window.clearChatMessages !== 'function') return;
-    if (window.isProcessing?.()) return;
     deleteFlowActive = true;
     try {
         if (await confirmByTyping({
