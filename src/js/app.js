@@ -27,10 +27,13 @@ function bindChatModeToggle() {
 window.setChatMode = setChatMode;
 window.bindChatModeToggle = bindChatModeToggle;
 const PRIMARY_FREE_MODEL_LIMIT = 20;
+const AFFORDABLE_MODEL_LIMIT = 10;
 const MODEL_CATALOG_TTL_MS = 2 * 60 * 1000;
 const EMPTY_MODEL_CATALOG_RETRY_MS = 15 * 1000;
 let FREE_MODEL_CATALOG = [];
 let AVAILABLE_FREE_MODELS = [];
+let AFFORDABLE_MODEL_CATALOG = [];
+let AVAILABLE_AFFORDABLE_MODELS = [];
 let _unavailableFreeModelIds = new Set();
 let _modelCatalogLoadedAt = 0;
 let _modelCatalogPromise = null;
@@ -55,6 +58,12 @@ function updatePrimaryFreeModels() {
         ? window.FreeModelDiscovery.selectPrimary(eligible, PRIMARY_FREE_MODEL_LIMIT)
         : [];
     return AVAILABLE_FREE_MODELS;
+}
+function updateAffordableModels() {
+    AVAILABLE_AFFORDABLE_MODELS = window.FreeModelDiscovery
+        ? window.FreeModelDiscovery.findAffordableModels(AFFORDABLE_MODEL_CATALOG, AFFORDABLE_MODEL_LIMIT)
+        : [];
+    return AVAILABLE_AFFORDABLE_MODELS;
 }
 
 function renderModelPickerOptions(models, emptyLabel = 'No free models currently available') {
@@ -112,10 +121,11 @@ async function refreshFreeModelCatalog({ force = false } = {}) {
         FREE_MODEL_CATALOG = window.FreeModelDiscovery
             ? window.FreeModelDiscovery.findFreeModels(liveModels)
             : [];
+        AFFORDABLE_MODEL_CATALOG = liveModels;
         _unavailableFreeModelIds.clear();
         _modelCatalogLoadedAt = Date.now();
-        const primary = updatePrimaryFreeModels();
-        renderModelPickerOptions(primary);
+        const primary = updateAffordableModels();
+        renderModelPickerOptions(primary, 'No affordable models currently available');
         return primary;
     })();
     try {
@@ -151,7 +161,7 @@ function bindModelPicker() {
             select.value = MODEL || '';
             return;
         }
-        const chosen = AVAILABLE_FREE_MODELS.find(model => model.id === select.value);
+        const chosen = AVAILABLE_AFFORDABLE_MODELS.find(model => model.id === select.value);
         if (!chosen || !window.FreeModelDiscovery?.isUsableChatModel(chosen)) return;
         MODEL = chosen.id;
         persistSelectedFreeModel(MODEL);
@@ -161,12 +171,12 @@ function bindModelPicker() {
 function markFreeModelUnavailable(modelId) {
     if (!modelId) return;
     _unavailableFreeModelIds.add(String(modelId));
-    const primary = updatePrimaryFreeModels();
-    renderModelPickerOptions(primary, 'No free models currently available');
+    const primary = updateAffordableModels();
+    renderModelPickerOptions(primary, 'No affordable models currently available');
 }
 
 function selectNextFreeModel(excludedModelIds = new Set()) {
-    const next = AVAILABLE_FREE_MODELS.find(model => !excludedModelIds.has(String(model.id)));
+    const next = AVAILABLE_AFFORDABLE_MODELS.find(model => !excludedModelIds.has(String(model.id)));
     if (!next) return null;
     MODEL = next.id;
     persistSelectedFreeModel(MODEL);
@@ -176,8 +186,8 @@ function selectNextFreeModel(excludedModelIds = new Set()) {
 }
 
 function getActiveFreeModelId() {
-    if (AVAILABLE_FREE_MODELS.some(model => model.id === MODEL)) return MODEL;
-    const first = AVAILABLE_FREE_MODELS[0];
+    if (AVAILABLE_AFFORDABLE_MODELS.some(model => model.id === MODEL)) return MODEL;
+    const first = AVAILABLE_AFFORDABLE_MODELS[0];
     if (!first) return null;
     MODEL = first.id;
     persistSelectedFreeModel(MODEL);
