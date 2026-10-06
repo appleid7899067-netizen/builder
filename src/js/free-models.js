@@ -101,7 +101,7 @@
         if (model.supports_tools != null && !saysTrue(model.supports_tools)) return false;
         if (model.supports_tool_call != null && !saysTrue(model.supports_tool_call)) return false;
 
-        return isFreeModel(model);
+        return true;
     }
 
     function hasFreeVariantId(model) {
@@ -186,6 +186,7 @@
         const seen = new Set();
         return unwrapModels(response)
             .filter(isUsableChatModel)
+            .filter(isFreeModel)
             .filter(model => modelPriority(model) < 99)
             .map(model => ({ ...model, name: (model.name || model.id) + ' · ' + freePriceLabel(model) }))
             .filter(model => {
@@ -204,6 +205,7 @@
         if (!max) return [];
         const sorted = (Array.isArray(models) ? models : [])
             .filter(isUsableChatModel)
+            .filter(isFreeModel)
             .slice()
             .sort(compareModels);
         const selected = [];
@@ -233,9 +235,9 @@
     }
 
 
-    // Affordable catalog: unlike the free-only roster above, this accepts models
-    // with explicit numeric input/output prices. Unknown pricing is rejected so
-    // the picker never labels a model "cheap" by guesswork.
+
+    // Affordable catalog: accepts models with explicit numeric input/output prices.
+    // Unknown pricing is rejected so the picker never labels a model "cheap" by guesswork.
     function modelPricePair(model) {
         const sources = [model.cost, model.costs, model.pricing];
         for (const source of sources) {
@@ -250,24 +252,7 @@
     function affordablePriceLabel(model) {
         const pair = modelPricePair(model);
         if (!pair) return 'PRICE N/A';
-        return '
-        findFreeModels,
-        hasExplicitZeroInputAndOutput,
-        isFreeModel,
-        isUsableChatModel,
-        selectPrimary,
-        findAffordableModels,
-    });
-})(window);
- + pair.input + '/M in · 
-        findFreeModels,
-        hasExplicitZeroInputAndOutput,
-        isFreeModel,
-        isUsableChatModel,
-        selectPrimary,
-    });
-})(window);
- + pair.output + '/M out';
+        return '$' + pair.input + '/M in · $' + pair.output + '/M out';
     }
 
     function affordableRank(model) {
@@ -303,5 +288,6 @@
         isFreeModel,
         isUsableChatModel,
         selectPrimary,
+        findAffordableModels,
     });
 })(window);
