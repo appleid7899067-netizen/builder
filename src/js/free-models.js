@@ -232,6 +232,71 @@
         return selected;
     }
 
+
+    // Affordable catalog: unlike the free-only roster above, this accepts models
+    // with explicit numeric input/output prices. Unknown pricing is rejected so
+    // the picker never labels a model "cheap" by guesswork.
+    function modelPricePair(model) {
+        const sources = [model.cost, model.costs, model.pricing];
+        for (const source of sources) {
+            if (!source || typeof source !== 'object') continue;
+            const input = finitePrice(source.input ?? source.prompt ?? source.input_cost);
+            const output = finitePrice(source.output ?? source.completion ?? source.output_cost);
+            if (input !== null && output !== null) return { input, output };
+        }
+        return null;
+    }
+
+    function affordablePriceLabel(model) {
+        const pair = modelPricePair(model);
+        if (!pair) return 'PRICE N/A';
+        return '
+        findFreeModels,
+        hasExplicitZeroInputAndOutput,
+        isFreeModel,
+        isUsableChatModel,
+        selectPrimary,
+        findAffordableModels,
+    });
+})(window);
+ + pair.input + '/M in · 
+        findFreeModels,
+        hasExplicitZeroInputAndOutput,
+        isFreeModel,
+        isUsableChatModel,
+        selectPrimary,
+    });
+})(window);
+ + pair.output + '/M out';
+    }
+
+    function affordableRank(model) {
+        const pair = modelPricePair(model);
+        if (!pair) return Number.POSITIVE_INFINITY;
+        const haystack = String(model.id || '') + ' ' + String(model.name || '');
+        let speedBonus = 0;
+        if (/flash|nano|mini|haiku|fast/i.test(haystack)) speedBonus = -1000;
+        return pair.input + pair.output + speedBonus;
+    }
+
+    function findAffordableModels(response, limit = 10) {
+        const max = Math.max(1, Math.min(10, Math.floor(Number(limit) || 10)));
+        const seen = new Set();
+        return unwrapModels(response)
+            .filter(isUsableChatModel)
+            .map(model => ({ model, price: modelPricePair(model) }))
+            .filter(({ price }) => price && price.input >= 0 && price.output >= 0)
+            .sort((a, b) => affordableRank(a.model) - affordableRank(b.model))
+            .map(({ model }) => ({ ...model, name: (model.name || model.id) + ' · ' + affordablePriceLabel(model) }))
+            .filter(model => {
+                const key = String(model.id).trim().toLowerCase();
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            })
+            .slice(0, max);
+    }
+
     root.FreeModelDiscovery = Object.freeze({
         findFreeModels,
         hasExplicitZeroInputAndOutput,
