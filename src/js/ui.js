@@ -153,6 +153,7 @@ function renderSkeleton() {
             h += `<span class="burger-line"></span>`;
             h += `<span class="burger-line"></span>`;
         h += `</button>`;
+        h += `<button type="button" class="clear-chat-history-btn" title="ล้างข้อความ แต่คุยเรื่องเดิมต่อได้" aria-label="ล้างข้อความ แต่คุยเรื่องเดิมต่อได้">ล้าง</button>`;
         // Mobile chat⇄app switcher, centered in the toolbar's empty middle. Shown
         // by CSS only on phones while a preview is active and the chat is the
         // visible view (the preview view shows its own copy in the preview
@@ -4726,6 +4727,25 @@ $(document).on('click', '.new-chat', async function(e) {
 
 // Add click handler for the header New Chat button and the sidebar "+ New"
 // button — both start a fresh project.
+$(document).on('click', '.clear-chat-history-btn', async function(e) {
+    e.preventDefault();
+    if (typeof window.clearChatMessages !== 'function') return;
+    if (window.isProcessing?.()) return;
+    deleteFlowActive = true;
+    try {
+        if (await confirmByTyping({
+            title: 'ล้างข้อความ?',
+            body: 'ล้างเฉพาะข้อความที่แสดงอยู่ แต่เก็บโปรเจกต์และบริบทสั้น ๆ ไว้ เพื่อคุยเรื่องเดิมต่อได้',
+            confirmWord: 'clear',
+            confirmLabel: 'ล้าง',
+        })) {
+            setTimeout(() => { window.clearChatMessages?.(); }, 0);
+        }
+    } finally {
+        setTimeout(() => { deleteFlowActive = false; }, 0);
+    }
+});
+
 $(document).on('click', '.header-new-chat, .sidebar-new-project', async function(e) {
     e.preventDefault();
     if (!await confirmLeaveActiveChat()) return;
