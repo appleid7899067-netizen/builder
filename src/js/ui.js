@@ -331,9 +331,11 @@ function updateUserMenu() {
     // host environment, so the account control is redundant — hide it there.
     const isApp = !!(window.puter && puter.env === 'app');
 
+    const githubWorkspaceButton = `<button type="button" class="github-workspace-btn" title="GitHub Workspace" aria-label="เปิด GitHub Workspace"><span aria-hidden="true">↗</span></button>`;
     const githubLink = `<a class="github-link" href="https://github.com/HeyPuter/builder" target="_blank" rel="noopener noreferrer" title="View source on GitHub" aria-label="View source on GitHub (opens in a new tab)"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M12 .5C5.37.5 0 5.87 0 12.5c0 5.3 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.725-4.043-1.61-4.043-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.09-.745.083-.73.083-.73 1.205.085 1.838 1.237 1.838 1.237 1.07 1.835 2.807 1.305 3.492.998.108-.776.42-1.305.763-1.605-2.665-.305-5.467-1.333-5.467-5.93 0-1.31.468-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23A11.5 11.5 0 0 1 12 6.3c1.02.005 2.045.138 3.005.405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.295 24 17.795 24 12.5c0-6.63-5.37-12-12-12Z"/></svg></a>`;
     let h = '';
     if (loggedIn && !isApp) {
+        h += githubWorkspaceButton;
         h += githubLink;
         // Signed in: a single avatar button opens the account panel — the
         // theme toggle lives inside the panel, so no toolbar toggle here.
@@ -353,6 +355,7 @@ function updateUserMenu() {
         if (loggedIn && feedbackAvailable()) {
             h += `<button class="feedback-btn" title="Send feedback">Send feedback</button>`;
         }
+        h += githubWorkspaceButton;
         h += githubLink;
         if (!isApp) h += `<button class="sign-in-btn">Sign In</button>`;
     }
@@ -380,6 +383,197 @@ function updateUserMenu() {
     // toggleTheme() and the OS-preference listener all route through here.
     window.syncUserPanelTheme?.();
 }
+
+/* -------------------------------------------------------------------------
+ * GitHub Workspace
+ * A small, explicit bridge from the Builder to a GitHub repository.
+ * The access token is deliberately session-only and is never written to
+ * localStorage. Repository + branch are remembered so the next visit can
+ * continue the same project.
+ * ------------------------------------------------------------------------- */
+const GITHUB_WORKSPACE_KEY = 'silelo_github_workspace';
+
+function githubWorkspaceConfig() {
+    try {
+        const value = JSON.parse(sessionStorage.getItem(GITHUB_WORKSPACE_KEY) || localStorage.getItem(GITHUB_WORKSPACE_KEY) || '{}');
+        return {
+            owner: String(value.owner || '').trim(),
+            repo: String(value.repo || '').trim(),
+            branch: String(value.branch || 'main').trim() || 'main'
+        };
+    } catch (_) { return { owner: '', repo: '', branch: 'main' }; }
+}
+function saveGithubWorkspaceConfig(value) {
+    const config = {
+        owner: String(value.owner || '').trim(),
+        repo: String(value.repo || '').trim(),
+        branch: String(value.branch || 'main').trim() || 'main'
+    };
+    try { localStorage.setItem(GITHUB_WORKSPACE_KEY, JSON.stringify(config)); } catch (_) {}
+    return config;
+}
+function githubWorkspaceToken() {
+    try { return sessionStorage.getItem('silelo_github_token') || ''; } catch (_) { return ''; }
+}
+function setGithubWorkspaceStatus(text, kind = '') {
+    const el = document.querySelector('.github-workspace-status');
+    if (!el) return;
+    el.textContent = text;
+    el.dataset.kind = kind;
+}
+function githubWorkspaceApi(path, options = {}) {
+    const token = githubWorkspaceToken();
+    if (!token) throw new Error('กรุณาใส่ GitHub Token ก่อน');
+    return fetch('https://api.github.com' + path, {
+        ...options,
+        headers: {
+            Accept: 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+            Authorization: 'Bearer ' + token,
+            ...(options.headers || {})
+        }
+    });
+}
+function closeGithubWorkspace() {
+    document.querySelector('.github-workspace-backdrop')?.remove();
+}
+function openGithubWorkspace() {
+    if (document.querySelector('.github-workspace-backdrop')) return;
+    const cfg = githubWorkspaceConfig();
+    const html = `
+      <div class="github-workspace-backdrop" role="presentation">
+        <section class="github-workspace-panel" role="dialog" aria-modal="true" aria-labelledby="github-workspace-title">
+          <div class="github-workspace-head">
+            <div><strong id="github-workspace-title">GitHub Workspace</strong><small>เชื่อม Repo แล้วต่อยอดจากโปรเจกต์เดิม</small></div>
+            <button type="button" class="github-workspace-close" aria-label="ปิด">×</button>
+          </div>
+          <div class="github-workspace-body">
+            <label>Repository
+              <input class="github-workspace-repo" value="${cfg.owner && cfg.repo ? cfg.owner + '/' + cfg.repo : ''}" placeholder="owner/repository" autocomplete="off">
+            </label>
+            <label>Branch
+              <input class="github-workspace-branch" value="${cfg.branch}" placeholder="main" autocomplete="off">
+            </label>
+            <label>GitHub Token <span>(เก็บเฉพาะ session นี้)</span>
+              <input class="github-workspace-token" type="password" placeholder="ghp_... หรือ fine-grained token" autocomplete="off">
+            </label>
+            <p class="github-workspace-help">Token ควรให้สิทธิ์เฉพาะ Repository → Contents: Read and write เท่านั้น</p>
+            <div class="github-workspace-actions">
+              <button type="button" class="github-workspace-check">ตรวจ Repo</button>
+              <button type="button" class="github-workspace-upload">📤 อัปโหลดไฟล์</button>
+              <button type="button" class="github-workspace-open" disabled>เปิด Repo</button>
+              <input class="github-workspace-file-input" type="file" multiple hidden>
+            </div>
+            <div class="github-workspace-status" role="status">พร้อมเชื่อมต่อ</div>
+            <div class="github-workspace-result" hidden></div>
+          </div>
+        </section>
+      </div>`;
+    document.body.insertAdjacentHTML('beforeend', html);
+    const root = document.querySelector('.github-workspace-backdrop');
+    const repoInput = root.querySelector('.github-workspace-repo');
+    const branchInput = root.querySelector('.github-workspace-branch');
+    const tokenInput = root.querySelector('.github-workspace-token');
+    const openBtn = root.querySelector('.github-workspace-open');
+    const fileInput = root.querySelector('.github-workspace-file-input');
+
+    root.querySelector('.github-workspace-close').addEventListener('click', closeGithubWorkspace);
+    root.addEventListener('click', e => { if (e.target === root) closeGithubWorkspace(); });
+    tokenInput.addEventListener('input', () => {
+        try { sessionStorage.setItem('silelo_github_token', tokenInput.value.trim()); } catch (_) {}
+    });
+    if (githubWorkspaceToken()) tokenInput.placeholder = 'Token พร้อมใช้งานใน session นี้';
+
+    function readConfig() {
+        const raw = repoInput.value.trim().replace(/^https?:\\/\\/github\\.com\\//i, '').replace(/\\.git$/i, '');
+        const parts = raw.split('/').filter(Boolean);
+        if (parts.length !== 2) throw new Error('ใส่ Repository เป็น owner/repository');
+        const config = saveGithubWorkspaceConfig({ owner: parts[0], repo: parts[1], branch: branchInput.value });
+        const token = tokenInput.value.trim();
+        if (token) { try { sessionStorage.setItem('silelo_github_token', token); } catch (_) {} }
+        return config;
+    }
+    async function checkRepo() {
+        try {
+            const config = readConfig();
+            setGithubWorkspaceStatus('กำลังตรวจ GitHub…');
+            const response = await githubWorkspaceApi('/repos/' + encodeURIComponent(config.owner) + '/' + encodeURIComponent(config.repo));
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message || 'ตรวจ Repo ไม่ผ่าน');
+            branchInput.value = config.branch || data.default_branch || 'main';
+            openBtn.disabled = false;
+            openBtn.dataset.url = data.html_url;
+            setGithubWorkspaceStatus('✓ เชื่อมต่อได้ • ' + data.full_name + ' • ' + (data.default_branch || config.branch), 'ok');
+            root.querySelector('.github-workspace-result').hidden = false;
+            root.querySelector('.github-workspace-result').textContent = 'สิทธิ์ Repo: ' + (data.permissions?.push ? 'เขียนได้' : 'อ่านอย่างเดียว');
+        } catch (error) {
+            setGithubWorkspaceStatus(error.message || 'เชื่อมต่อ GitHub ไม่สำเร็จ', 'error');
+        }
+    }
+    root.querySelector('.github-workspace-check').addEventListener('click', checkRepo);
+    openBtn.addEventListener('click', () => { if (openBtn.dataset.url) window.open(openBtn.dataset.url, '_blank', 'noopener'); });
+    root.querySelector('.github-workspace-upload').addEventListener('click', async () => {
+        try { readConfig(); } catch (e) { setGithubWorkspaceStatus(e.message, 'error'); return; }
+        fileInput.value = '';
+        fileInput.click();
+    });
+    fileInput.addEventListener('change', async () => {
+        const files = Array.from(fileInput.files || []);
+        if (!files.length) return;
+        if (files.length > 100) { setGithubWorkspaceStatus('อัปโหลดครั้งละไม่เกิน 100 ไฟล์', 'error'); return; }
+        let config;
+        try { config = readConfig(); } catch (e) { setGithubWorkspaceStatus(e.message, 'error'); return; }
+        const branch = config.branch || 'main';
+        setGithubWorkspaceStatus('กำลังอัปโหลด ' + files.length + ' ไฟล์…');
+        let done = 0;
+        try {
+            for (const file of files) {
+                const rawPath = file.webkitRelativePath || file.name;
+                const path = rawPath.split('/').filter(Boolean).filter(p => p !== 'node_modules' && p !== '.git' && p !== 'dist').join('/');
+                if (!path || /(^|\\/)(node_modules|\\.git|dist)(\\/|$)/.test(path)) continue;
+                const content = await file.text();
+                const encoded = btoa(unescape(encodeURIComponent(content)));
+                const apiPath = '/repos/' + encodeURIComponent(config.owner) + '/' + encodeURIComponent(config.repo) + '/contents/' + path.split('/').map(encodeURIComponent).join('/');
+                let sha;
+                const existing = await githubWorkspaceApi(apiPath + '?ref=' + encodeURIComponent(branch));
+                if (existing.ok) {
+                    const old = await existing.json();
+                    sha = old.sha;
+                } else if (existing.status !== 404) {
+                    const old = await existing.json().catch(() => ({}));
+                    throw new Error(old.message || 'อ่านไฟล์เดิมไม่สำเร็จ: ' + path);
+                }
+                const payload = {
+                    message: 'SILELO: sync ' + path,
+                    content: encoded,
+                    branch,
+                    ...(sha ? { sha } : {})
+                };
+                const write = await githubWorkspaceApi(apiPath, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await write.json().catch(() => ({}));
+                if (!write.ok) throw new Error((result.message || 'อัปโหลดไม่สำเร็จ') + ' • ' + path);
+                done++;
+                setGithubWorkspaceStatus('อัปโหลดแล้ว ' + done + '/' + files.length + ' • ' + path);
+            }
+            setGithubWorkspaceStatus('✓ อัปโหลดสำเร็จ ' + done + ' ไฟล์ • Branch: ' + branch, 'ok');
+        } catch (error) {
+            setGithubWorkspaceStatus('หยุดที่ ' + done + '/' + files.length + ' • ' + (error.message || 'เกิดข้อผิดพลาด'), 'error');
+        }
+    });
+    repoInput.focus();
+}
+window.openGithubWorkspace = openGithubWorkspace;
+window.closeGithubWorkspace = closeGithubWorkspace;
+
+document.addEventListener('click', e => {
+    const button = e.target.closest?.('.github-workspace-btn');
+    if (button) { e.preventDefault(); openGithubWorkspace(); }
+});
+
 window.updateUserMenu = updateUserMenu;
 
 // SVG used by the preview pane reload button
