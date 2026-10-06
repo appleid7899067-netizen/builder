@@ -75,7 +75,7 @@ window.tools.push({
             return { success: true, path };
         });
 
-        window.schedulePreviewRefresh?.();
+        window.schedulePreviewRefresh?.(state);
         return result;
     }
 })

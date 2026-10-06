@@ -32,7 +32,7 @@ window.tools.push({
         // buffer. See window.withFileLock (matches write/move/rename/delete).
         const dest = destDir + '/' + src.slice(src.lastIndexOf('/') + 1);
         await window.withFileLock(dest, () => puter.fs.copy(src, destDir));
-        window.schedulePreviewRefresh?.();
+        window.schedulePreviewRefresh?.(state);
         return { success: true, path: destDir };
     }
 })

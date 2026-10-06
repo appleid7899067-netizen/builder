@@ -72,6 +72,70 @@ function renderStarterPrompts() {
 }
 window.renderStarterPrompts = renderStarterPrompts;
 
+// Compact, Grok-style history control. This is UI-only: the full chat history
+// remains persisted exactly as before. Older messages are visually collapsed while
+// the latest exchange stays readable; the existing clear/compact flow remains
+// responsible for reducing model context when the user explicitly clears history.
+let chatHistoryCollapsed = true;
+const CHAT_HISTORY_VISIBLE_MESSAGES = 6;
+
+function updateChatHistoryCollapse() {
+    const $box = $('.chat-box');
+    const $control = $('.chat-history-collapse');
+    if (!$box.length || !$control.length) return;
+
+    const $messages = $box.children('.message');
+    const total = $messages.length;
+    const hiddenCount = Math.max(0, total - CHAT_HISTORY_VISIBLE_MESSAGES);
+
+    if (hiddenCount === 0) {
+        $control.prop('hidden', true).removeClass('is-open');
+        $messages.removeClass('history-collapsed');
+        return;
+    }
+
+    $control.prop('hidden', false).toggleClass('is-open', !chatHistoryCollapsed);
+    $control.find('.chat-history-collapse-count').text(
+        chatHistoryCollapsed ? 'Show previous ' + hiddenCount + ' messages' : 'Hide previous messages'
+    );
+
+    $messages.removeClass('history-collapsed');
+    if (chatHistoryCollapsed) {
+        $messages.slice(0, hiddenCount).addClass('history-collapsed');
+    }
+}
+
+function initChatHistoryCollapse() {
+    if ($('.chat-history-collapse').length) return;
+    const $control = $('<button type="button" class="chat-history-collapse" aria-expanded="false" hidden>' +
+        '<span class="chat-history-collapse-count">Show previous messages</span>' +
+        '<span class="chat-history-collapse-chevron" aria-hidden="true">⌄</span>' +
+        '</button>');
+
+    // The control lives directly below the app toolbar and above the conversation,
+    // so it behaves like a native chat surface element rather than another card.
+    $('.chat.chat-current').prepend($control);
+
+    $control.on('click', () => {
+        chatHistoryCollapsed = !chatHistoryCollapsed;
+        $control.attr('aria-expanded', String(!chatHistoryCollapsed));
+        updateChatHistoryCollapse();
+        if (!chatHistoryCollapsed) {
+            const box = $('.chat-box')[0];
+            if (box) requestAnimationFrame(() => { box.scrollTop = 0; });
+        }
+    });
+
+    const box = $('.chat-box')[0];
+    if (box && window.MutationObserver) {
+        const observer = new MutationObserver(() => updateChatHistoryCollapse());
+        observer.observe(box, { childList: true });
+    }
+    updateChatHistoryCollapse();
+}
+window.updateChatHistoryCollapse = updateChatHistoryCollapse;
+window.initChatHistoryCollapse = initChatHistoryCollapse;
+
 function renderSkeleton() {
     let h = "";
 
@@ -89,6 +153,7 @@ function renderSkeleton() {
             h += `<span class="burger-line"></span>`;
             h += `<span class="burger-line"></span>`;
         h += `</button>`;
+        h += `<button type="button" class="clear-chat-history-btn" title="ล้างข้อความ แต่คุยเรื่องเดิมต่อได้" aria-label="ล้างข้อความ แต่คุยเรื่องเดิมต่อได้">ล้าง</button>`;
         // Mobile chat⇄app switcher, centered in the toolbar's empty middle. Shown
         // by CSS only on phones while a preview is active and the chat is the
         // visible view (the preview view shows its own copy in the preview
@@ -128,8 +193,8 @@ function renderSkeleton() {
         // hero centered in the first viewport while the community feed peeks
         // above the fold below it.
         h += `<div class="home-hero">`;
-        h += `<div class="chat-tagline"><a class="chat-tagline-logo" href="/"><img class="chat-tagline-icon" src="/favicons/app-icon.png" alt="Puter"></a><h1 class="chat-tagline-text">Build Apps and Websites With AI</h1></div>`;
-        h += `<div class="chat-tagline-sub">Describe your idea and Puter will build it for you, no code required!</div>`;
+        h += `<div class="chat-tagline"><a class="chat-tagline-logo" href="/"><img class="chat-tagline-icon" src="/silelo-logo.svg" alt="SILELO"></a><h1 class="chat-tagline-text">Build with SILELO AI</h1></div>`;
+        h += `<div class="chat-tagline-sub">Describe your idea. SILELO turns it into a working app.</div>`;
         h += `<div class="chat-input">`;
             // Icon-only controls carry an accessible name (aria-label / title): a
             // screen reader otherwise announces the composer as an unlabelled
@@ -138,6 +203,7 @@ function renderSkeleton() {
             h += `<div class="chat-input-message-actions">`;
                 h += `<button class="attachment-button" title="Attach files from your computer">${attachment_svg}</button>`;
                 h += `<input type="file" class="attachment-file-input" accept="${ATTACHMENT_ACCEPT}" multiple style="display:none">`;
+                h += `<button type="button" class="chat-mode-toggle" aria-pressed="false" title="โหมดคุยธรรมดา: ไม่สร้างแอปและไม่รันโค้ด">💬 คุย</button><div class="model-picker" title="Choose a free AI model"><span class="model-picker-label">AI</span><select class="model-picker-select" aria-label="Choose a free AI model" disabled><option value="">Checking free models…</option></select></div>`;
                 // The label flips to "Stop" while a turn runs (updateSendButtonState).
                 h += `<button class="send" disabled title="Send message" aria-label="Send message">${send_svg}</button>`;
             h += `</div>`;
@@ -201,6 +267,8 @@ function renderSkeleton() {
     // append the chat window to the body
     $('body').append(h);
 
+    initChatHistoryCollapse();
+
     // Remember the default tagline copy so the greeting reconciler can restore it
     // if a personalised greeting needs to be reverted (see applyHomeGreeting).
     window._defaultTaglineText = $('.chat-tagline-text').text();
@@ -213,6 +281,9 @@ function renderSkeleton() {
     // Fill the empty-state starter prompts. Static, so once is enough — the row
     // is shown/hidden by `.chat.active` thereafter.
     renderStarterPrompts();
+    window.bindModelPicker?.();
+    window.bindChatModeToggle?.();
+    window.initializeModelPicker?.();
 }
 
 // Tracks whether the account panel (see openUserPanel below) is open, so the
@@ -969,15 +1040,83 @@ async function runPreviewRefresh($frame, baseUrl, ownerChatId, seq) {
 }
 
 let previewRefreshPending = false;
+
+// A fresh preview should not steal the conversation while the assistant is
+// still streaming, running tools, and verifying the result. Keep the turn token
+// separate from the visual state so a late tool or a superseded turn cannot
+// reveal another project's preview.
+let deferredPreviewTurn = null;
+function previewTurnMatches(chatId, turnSeq) {
+    if (!deferredPreviewTurn) return false;
+    if (chatId != null && String(chatId) !== deferredPreviewTurn.chatId) return false;
+    if (turnSeq != null && Number(turnSeq) !== deferredPreviewTurn.turnSeq) return false;
+    return true;
+}
+
+function keepPreviewInChat() {
+    $('body').addClass('preview-deferred mobile-view-chat').removeClass('chat-hidden');
+    // A turn that started while the preview was expanded must keep the chat
+    // reachable and visible until the assistant finishes.
+    $('.preview-toggle-chat').attr({
+        title: 'Expand preview',
+        'aria-label': 'Hide the chat panel',
+        'aria-expanded': 'true',
+    });
+    window.syncViewSeg?.();
+}
+
+window.beginPreviewTurn = function(chatId, turnSeq) {
+    deferredPreviewTurn = { chatId: String(chatId), turnSeq: Number(turnSeq) };
+};
+
+// Called when an app file changes during a turn, or when publish_site creates
+// the first preview. The iframe remains available to update_preview for
+// verification, but the user stays with the organized chat/progress checklist.
+window.deferPreviewForTurn = function(chatId, turnSeq) {
+    if (!previewTurnMatches(chatId, turnSeq)) return false;
+    keepPreviewInChat();
+    return true;
+};
+
+// Reveal only the preview staged by this exact turn. A Stop/retry/chat switch
+// can let old async work unwind after a newer turn has started; its teardown
+// must not change the newer turn's layout.
+window.finishPreviewTurn = function(chatId, turnSeq) {
+    if (!previewTurnMatches(chatId, turnSeq)) return false;
+    deferredPreviewTurn = null;
+    const $body = $('body');
+    if (!$body.hasClass('preview-deferred')) return false;
+    $body.removeClass('preview-deferred mobile-view-chat chat-hidden');
+    $('.preview-toggle-chat').attr({
+        title: 'Expand preview',
+        'aria-label': 'Hide the chat panel',
+        'aria-expanded': 'true',
+    });
+    window.syncViewSeg?.();
+    return true;
+};
+
+// A project switch cancels the old turn's staged view without letting it leak
+// into the destination chat. showAppPreview/hideAppPreview will set that chat's
+// own view once its saved state has loaded.
+window.cancelPreviewTurn = function(chatId, turnSeq) {
+    if (deferredPreviewTurn && !previewTurnMatches(chatId, turnSeq)) return false;
+    deferredPreviewTurn = null;
+    return true;
+};
+
 /**
  * Mark the preview as needing a refresh because files changed. The actual
  * reload is deferred until the AI finishes its whole turn (see flushPreviewRefresh),
  * so the preview reloads once per modification, not once per file write.
  * No-op when the preview pane is not currently shown.
  */
-window.schedulePreviewRefresh = function() {
+window.schedulePreviewRefresh = function(state) {
     if (!$('body').hasClass('preview-active')) return;
     previewRefreshPending = true;
+    // Keep the chat in front as soon as a live app starts changing. Pass the
+    // originating turn so a write that finishes late cannot hide a newer chat.
+    window.deferPreviewForTurn?.(state?.currentChatId, state?.turnSeq);
 };
 
 /**
@@ -996,16 +1135,17 @@ window.flushPreviewRefresh = flushPreviewRefresh;
 
 /**
  * Show a published app/site inside a browser-like preview pane.
- * The chat moves to the right and the preview fills the left side at full
- * height/width. Called by the publish_site tool — re-invoking it (i.e. when a
- * new version is published) refreshes the preview to show the latest version.
+ * During an active build, keep the chat in front and stage the iframe in the
+ * background so update_preview can verify it; the turn teardown reveals it.
  * @param {string} url - the URL of the published app/site to load
- * @param {{waitForReady?: boolean}} [opts] - when waitForReady is true, wait for
- *   the freshly-deployed content to propagate to the CDN (showing an overlay)
- *   before reloading; otherwise just (re)display the already-live site.
+ * @param {{waitForReady?: boolean, deferUntilTurnComplete?: boolean, chatId?: string, turnSeq?: number}} [opts]
+ *   waitForReady waits for CDN propagation before reloading. deferUntilTurnComplete
+ *   keeps the chat visible until the matching assistant turn finishes.
  */
 window.showAppPreview = function(url, opts) {
     opts = opts || {};
+    const deferUntilTurnComplete = opts.deferUntilTurnComplete === true
+        && window.deferPreviewForTurn?.(opts.chatId, opts.turnSeq) === true;
     let $pane = $('.preview-pane');
     if (!$pane.length) {
         $pane = $(`
@@ -1070,9 +1210,14 @@ window.showAppPreview = function(url, opts) {
     }
     window.currentPreviewUrl = url;
     $('body').addClass('preview-active');
-    // On mobile, default to showing the freshly-previewed app (not the chat).
-    $('body').removeClass('mobile-view-chat');
-    // Point both toolbar switchers at the App segment to match.
+    if (!deferUntilTurnComplete) {
+        // Restoring a saved project (or a non-turn preview open) should show the
+        // app immediately and clear any stale staged state from the prior chat.
+        window.cancelPreviewTurn?.(opts.chatId, opts.turnSeq);
+        $('body').removeClass('preview-deferred mobile-view-chat chat-hidden');
+    }
+    // A newly staged preview leaves the chat selected; otherwise the app is the
+    // default view on mobile, matching the existing preview-open behavior.
     window.syncViewSeg();
     // Reflect this chat's version history in the undo/redo toolbar buttons.
     window.updateVersionNavButtons?.();
@@ -1099,7 +1244,8 @@ window.showAppPreview = function(url, opts) {
 window.hideAppPreview = function() {
     // Supersede any in-flight propagation probe so it can't reload/clobber later.
     _previewRefreshSeq++;
-    $('body').removeClass('preview-active chat-hidden mobile-view-chat');
+    deferredPreviewTurn = null;
+    $('body').removeClass('preview-active preview-deferred chat-hidden mobile-view-chat');
     // The chat-toggle mirrors the chat-hidden state in its name and
     // aria-expanded (see its click handler). The class is gone now, and the
     // pane element is reused by the next showAppPreview, so without this a
@@ -3246,7 +3392,7 @@ window.resetPreviewErrorDedup = function () {
         $frame.on('load', onLoad);
 
         try {
-            window.schedulePreviewRefresh?.();
+            window.schedulePreviewRefresh?.(state);
             window.flushPreviewRefresh?.();
 
             // Wait for our reload to finish loading (or give up). Poll so a
@@ -4260,6 +4406,24 @@ $(document).on('click', '.chat-menu-btn', function(e) {
             },
             '-',
             {
+                label: 'Clear messages',
+                action: async function() {
+                    deleteFlowActive = true;
+                    try {
+                        if (await confirmByTyping({
+                            title: 'Clear chat messages?',
+                            body: 'This removes the visible conversation from this project, but keeps the project files and a small continuation context so you can keep talking about the same work.',
+                            confirmWord: 'clear',
+                            confirmLabel: 'Clear',
+                        })) {
+                            setTimeout(() => { clearChatMessages(chatId); }, 0);
+                        }
+                    } finally {
+                        setTimeout(() => { deleteFlowActive = false; }, 0);
+                    }
+                }
+            },
+            {
                 label: 'Delete',
                 action: async function() {
                     // Guard the whole flow (confirm dialog + removal) so clicking
@@ -4563,6 +4727,24 @@ $(document).on('click', '.new-chat', async function(e) {
 
 // Add click handler for the header New Chat button and the sidebar "+ New"
 // button — both start a fresh project.
+$(document).on('click', '.clear-chat-history-btn', async function(e) {
+    e.preventDefault();
+    if (typeof window.clearChatMessages !== 'function') return;
+    deleteFlowActive = true;
+    try {
+        if (await confirmByTyping({
+            title: 'ล้างข้อความ?',
+            body: 'ล้างเฉพาะข้อความที่แสดงอยู่ แต่เก็บโปรเจกต์และบริบทสั้น ๆ ไว้ เพื่อคุยเรื่องเดิมต่อได้',
+            confirmWord: 'clear',
+            confirmLabel: 'ล้าง',
+        })) {
+            setTimeout(() => { window.clearChatMessages?.(); }, 0);
+        }
+    } finally {
+        setTimeout(() => { deleteFlowActive = false; }, 0);
+    }
+});
+
 $(document).on('click', '.header-new-chat, .sidebar-new-project', async function(e) {
     e.preventDefault();
     if (!await confirmLeaveActiveChat()) return;

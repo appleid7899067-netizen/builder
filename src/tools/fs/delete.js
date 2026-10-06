@@ -32,7 +32,7 @@ window.tools.push({
         // can't be mid read-modify-write on this file and then re-create it with a
         // stale buffer after we delete it. See window.withFileLock.
         await window.withFileLock(path, () => puter.fs.delete(path));
-        window.schedulePreviewRefresh?.();
+        window.schedulePreviewRefresh?.(state);
         return { success: true };
     }
 })

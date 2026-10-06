@@ -92,7 +92,7 @@ window.tools.push({
             return { success: true, path, edits_applied: args.edits.length };
         });
 
-        window.schedulePreviewRefresh?.();
+        window.schedulePreviewRefresh?.(state);
         return result;
     }
 })

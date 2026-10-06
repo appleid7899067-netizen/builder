@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: sandbox-runner-ci
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerContext: .
+    dockerfilePath: ./services/agent-reach-mcp/Dockerfile
+    healthCheckPath: /healthz
+    envVars:
+      - key: MCP_BEARER_TOKEN
+        generateValue: true

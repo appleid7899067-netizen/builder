@@ -35,7 +35,7 @@ window.tools.push({
         // bytes persisted (retry-then-throw on failure), so a write that silently
         // fails to land surfaces as a tool error instead of a false success.
         await window.withFileLock(path, () => window.writeFileVerified(path, args.data));
-        window.schedulePreviewRefresh?.();
+        window.schedulePreviewRefresh?.(state);
         return { success: true, path };
     }
 })

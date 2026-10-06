@@ -37,7 +37,7 @@ window.tools.push({
         // Lock the source path so a concurrent background preview cache-bust can't
         // re-create it from a stale buffer after the rename moves it. See withFileLock.
         await window.withFileLock(path, () => puter.fs.rename(path, args.new_name));
-        window.schedulePreviewRefresh?.();
+        window.schedulePreviewRefresh?.(state);
         return { success: true, new_name: args.new_name };
     }
 })

@@ -1,4 +1,193 @@
-let MODEL = 'claude-opus-5-5';
+const MODEL_STORAGE_KEY = 'puter_builder_model';
+const CHAT_MODE_STORAGE_KEY = 'silelo_chat_mode';
+let chatMode = (() => { try { return localStorage.getItem(CHAT_MODE_STORAGE_KEY) === 'chat' ? 'chat' : 'build'; } catch (_) { return 'build'; } })();
+
+function isSimpleChatMode() { return chatMode === 'chat'; }
+function setChatMode(mode) {
+    chatMode = mode === 'chat' ? 'chat' : 'build';
+    try { localStorage.setItem(CHAT_MODE_STORAGE_KEY, chatMode); } catch (_) {}
+    const button = document.querySelector('.chat-mode-toggle');
+    if (button) {
+        button.textContent = chatMode === 'chat' ? '💬 คุย' : '🛠️ สร้าง';
+        button.classList.toggle('active', chatMode === 'chat');
+        button.setAttribute('aria-pressed', String(chatMode === 'chat'));
+        button.title = chatMode === 'chat' ? 'โหมดคุยธรรมดา: ไม่สร้างแอปและไม่รันโค้ด' : 'โหมดสร้าง: ให้ SILELO สร้างหรือแก้แอป';
+    }
+}
+function bindChatModeToggle() {
+    const button = document.querySelector('.chat-mode-toggle');
+    if (!button || button.dataset.bound) return;
+    button.dataset.bound = '1';
+    button.addEventListener('click', () => {
+        if (isProcessing || _sendSetupInFlight) return;
+        setChatMode(isSimpleChatMode() ? 'build' : 'chat');
+    });
+    setChatMode(chatMode);
+}
+window.setChatMode = setChatMode;
+window.bindChatModeToggle = bindChatModeToggle;
+const PRIMARY_FREE_MODEL_LIMIT = 20;
+const MODEL_CATALOG_TTL_MS = 2 * 60 * 1000;
+const EMPTY_MODEL_CATALOG_RETRY_MS = 15 * 1000;
+let FREE_MODEL_CATALOG = [];
+let AVAILABLE_FREE_MODELS = [];
+let _unavailableFreeModelIds = new Set();
+let _modelCatalogLoadedAt = 0;
+let _modelCatalogPromise = null;
+let MODEL = null;
+
+function persistSelectedFreeModel(modelId) {
+    try {
+        if (modelId) localStorage.setItem(MODEL_STORAGE_KEY, modelId);
+        else localStorage.removeItem(MODEL_STORAGE_KEY);
+    } catch (e) { /* storage blocked */ }
+}
+
+function readSavedFreeModel() {
+    try { return localStorage.getItem(MODEL_STORAGE_KEY); }
+    catch (e) { return null; }
+}
+
+function updatePrimaryFreeModels() {
+    const eligible = FREE_MODEL_CATALOG.filter(model =>
+        !_unavailableFreeModelIds.has(String(model.id)));
+    AVAILABLE_FREE_MODELS = window.FreeModelDiscovery
+        ? window.FreeModelDiscovery.selectPrimary(eligible, PRIMARY_FREE_MODEL_LIMIT)
+        : [];
+    return AVAILABLE_FREE_MODELS;
+}
+
+function renderModelPickerOptions(models, emptyLabel = 'No free models currently available') {
+    const select = document.querySelector('.model-picker-select');
+    if (!select) return;
+    const list = Array.isArray(models) ? models : [];
+    select.replaceChildren();
+
+    if (!list.length) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = emptyLabel;
+        select.appendChild(option);
+        select.disabled = true;
+        select.title = emptyLabel;
+        MODEL = null;
+        if (emptyLabel !== 'Checking free models…') persistSelectedFreeModel(null);
+        return;
+    }
+
+    for (const model of list) {
+        const option = document.createElement('option');
+        option.value = model.id;
+        const label = model.name || model.id;
+        option.textContent = /\bfree\b/i.test(label) || /\$0\/M\s+in\s+·\s+\$0\/M\s+out/i.test(label) ? label : `${label} · FREE`;
+        select.appendChild(option);
+    }
+
+    const saved = readSavedFreeModel();
+    const chosen = list.find(model => model.id === MODEL)
+        || list.find(model => model.id === saved)
+        || list[0];
+    MODEL = chosen.id;
+    select.value = MODEL;
+    select.disabled = false;
+    select.title = 'Choose one of the free models detected as available';
+    persistSelectedFreeModel(MODEL);
+}
+
+async function refreshFreeModelCatalog({ force = false } = {}) {
+    if (_modelCatalogPromise) return _modelCatalogPromise;
+    const cacheAge = Date.now() - _modelCatalogLoadedAt;
+    const cacheTtl = AVAILABLE_FREE_MODELS.length
+        ? MODEL_CATALOG_TTL_MS
+        : EMPTY_MODEL_CATALOG_RETRY_MS;
+    if (!force && _modelCatalogLoadedAt && cacheAge < cacheTtl) {
+        return AVAILABLE_FREE_MODELS;
+    }
+    if (!window.puter?.ai?.listModels) {
+        throw new Error('Puter AI model discovery is not available.');
+    }
+
+    _modelCatalogPromise = (async () => {
+        const liveModels = await puter.ai.listModels();
+        FREE_MODEL_CATALOG = window.FreeModelDiscovery
+            ? window.FreeModelDiscovery.findFreeModels(liveModels)
+            : [];
+        _unavailableFreeModelIds.clear();
+        _modelCatalogLoadedAt = Date.now();
+        const primary = updatePrimaryFreeModels();
+        renderModelPickerOptions(primary);
+        return primary;
+    })();
+    try {
+        return await _modelCatalogPromise;
+    } finally {
+        _modelCatalogPromise = null;
+    }
+}
+
+async function initializeModelPicker() {
+    const select = document.querySelector('.model-picker-select');
+    if (!select) return [];
+    if (!AVAILABLE_FREE_MODELS.length) renderModelPickerOptions([], 'Checking free models…');
+    try {
+        return await refreshFreeModelCatalog({ force: true });
+    } catch (e) {
+        console.warn('Could not discover free Puter models:', e);
+        if (!AVAILABLE_FREE_MODELS.length) {
+            renderModelPickerOptions([], 'Free models unavailable — retry when online');
+        } else {
+            renderModelPickerOptions(AVAILABLE_FREE_MODELS);
+        }
+        return AVAILABLE_FREE_MODELS;
+    }
+}
+
+function bindModelPicker() {
+    const select = document.querySelector('.model-picker-select');
+    if (!select || select.dataset.bound) return;
+    select.dataset.bound = '1';
+    select.addEventListener('change', () => {
+        if (isProcessing) {
+            select.value = MODEL || '';
+            return;
+        }
+        const chosen = AVAILABLE_FREE_MODELS.find(model => model.id === select.value);
+        if (!chosen || !window.FreeModelDiscovery?.isUsableChatModel(chosen)) return;
+        MODEL = chosen.id;
+        persistSelectedFreeModel(MODEL);
+    });
+}
+
+function markFreeModelUnavailable(modelId) {
+    if (!modelId) return;
+    _unavailableFreeModelIds.add(String(modelId));
+    const primary = updatePrimaryFreeModels();
+    renderModelPickerOptions(primary, 'No free models currently available');
+}
+
+function selectNextFreeModel(excludedModelIds = new Set()) {
+    const next = AVAILABLE_FREE_MODELS.find(model => !excludedModelIds.has(String(model.id)));
+    if (!next) return null;
+    MODEL = next.id;
+    persistSelectedFreeModel(MODEL);
+    const select = document.querySelector('.model-picker-select');
+    if (select) select.value = MODEL;
+    return next;
+}
+
+function getActiveFreeModelId() {
+    if (AVAILABLE_FREE_MODELS.some(model => model.id === MODEL)) return MODEL;
+    const first = AVAILABLE_FREE_MODELS[0];
+    if (!first) return null;
+    MODEL = first.id;
+    persistSelectedFreeModel(MODEL);
+    const select = document.querySelector('.model-picker-select');
+    if (select) select.value = MODEL;
+    return MODEL;
+}
+
+window.initializeModelPicker = initializeModelPicker;
+window.bindModelPicker = bindModelPicker;
 let system_prompt
 let chatHistory;
 let currentAppDir;
@@ -250,7 +439,8 @@ async function saveCurrentChatUnlocked(context) {
     // has been swapped (loadChat) or reset (new_chat), which would otherwise
     // make this guard wrongly skip a save whose own history has real messages.
     const hasNonSystemMessages = context.chatHistory.some(msg => msg.role !== 'system');
-    if (!hasNonSystemMessages) {
+    const hasCompactContext = context.chatHistory.some(msg => msg.role === 'system' && msg._compactContext === true);
+    if (!hasNonSystemMessages && !hasCompactContext) {
         return;
     }
     
@@ -1181,11 +1371,167 @@ async function loadChat(chatId, { urlMode = 'push' } = {}) {
     }
 }
 
-// Chats deleted this session. A save for one of these is dropped on the floor
-// (see saveCurrentChat): a turn that was still running in the deleted project
-// unwinds AFTER the files are gone, and its mandatory end-of-turn save used to
-// write chat-history/<id>.json back and unshift the entry into the index — the
-// project rose from the dead in the sidebar, with its history but no files.
+// Clear the visible conversation without creating a new project.
+// The project files, preview, title and chat id stay intact. We keep only a tiny
+// deterministic continuation capsule (no extra AI call), so the next request can
+// continue the same work without resending the entire old transcript.
+async function clearChatMessages(chatId = currentChatId) {
+    if (!chatId || chatId !== currentChatId) return false;
+
+    terminateActiveTurn();
+    resetChatUIForSwitch();
+
+    const history = Array.isArray(chatHistory) ? chatHistory : [];
+    const userMessages = history
+        .filter(m => m && m.role === 'user')
+        .map(m => {
+            let text = '';
+            if (typeof m.content === 'string') text = m.content;
+            else if (Array.isArray(m.content)) {
+                text = m.content
+                    .filter(p => p && p.type === 'text')
+                    .map(p => p.text || '')
+                    .join(' ');
+            }
+            return String(text || '').replace(/\s+/g, ' ').trim();
+        })
+        .filter(Boolean);
+
+    // Skip low-signal acknowledgements so "F", "ok", etc. don't become the
+    // only continuation context after a clear.
+    const lowSignal = /^(f|ff|ok|okay|yes|y|ครับ|ค่ะ|ใช่|ได้|ได้ครับ|ได้ค่ะ|ต่อ|ต่อครับ|ต่อค่ะ|ทำต่อ|ทำต่อครับ|ทำต่อค่ะ)[.!?\s]*$/i;
+    const substantive = userMessages.filter(t => !lowSignal.test(t));
+    const recent = (substantive.length ? substantive : userMessages)
+        .slice(-2)
+        .map(t => t.slice(-600));
+
+    const contextText = [
+        'CONTINUATION CONTEXT',
+        'The visible conversation was cleared to reduce prompt/token usage.',
+        'Keep working on the same project and current goal. The project files are the source of truth; inspect them when details are needed.',
+        recent.length ? 'Recent user intent:' : '',
+        ...recent.map((t, i) => `${i + 1}. ${t}`)
+    ].filter(Boolean).join('\n');
+
+    // Keep the existing system prompt as-is, then add one compact hidden system
+    // message. loadChat() already skips system messages when rebuilding the UI.
+    const baseSystem = history.find(m => m && m.role === 'system') || system_prompt;
+    chatHistory = [
+        baseSystem,
+        { role: 'system', _compactContext: true, content: contextText }
+    ];
+
+    $('.chat').addClass('active');
+    $('.chat-box').empty();
+    window.currentTodos = null;
+    $('.chat-box .todo-list').remove();
+
+    try {
+        await saveCurrentChat({ currentChatId: chatId, chatHistory });
+        updateChatHistorySidebar();
+        window.showToast?.('ล้างข้อความแล้ว • โปรเจกต์เดิมและบริบทสั้น ๆ ยังอยู่ คุยต่อได้เลย', {
+            type: 'success',
+            key: 'chat-cleared'
+        });
+        return true;
+    } catch (e) {
+        console.error('Clear chat messages failed:', e);
+        window.showToast?.('ล้างข้อความไม่สำเร็จ — ข้อมูลเดิมยังอยู่', {
+            type: 'error',
+            key: 'chat-clear-failed'
+        });
+        return false;
+    }
+}
+window.clearChatMessages = clearChatMessages;
+
+
+// Remove the oldest batch of conversation messages without creating a new chat.
+// Each click removes up to 10 non-system messages, so the user can keep clicking
+// to trim a long conversation gradually while preserving the project itself.
+async function clearNextChatMessages(chatId = currentChatId) {
+    if (!chatId || chatId !== currentChatId) return false;
+
+    terminateActiveTurn();
+    resetChatUIForSwitch();
+
+    const history = Array.isArray(chatHistory) ? chatHistory : [];
+    const removableIndexes = [];
+    for (let i = 0; i < history.length; i++) {
+        const msg = history[i];
+        if (msg && msg.role !== 'system') removableIndexes.push(i);
+    }
+
+    if (!removableIndexes.length) {
+        window.showToast?.('ล้างข้อความหมดแล้ว', { type: 'info', key: 'chat-clear-batch-empty' });
+        return false;
+    }
+
+    // Keep one conversation message so the normal chat saver persists the batch clear.
+    const batchSize = Math.min(10, Math.max(0, removableIndexes.length - 1));
+    if (batchSize === 0) {
+        window.showToast?.('เหลือข้อความสุดท้ายแล้ว', { type: 'info', key: 'chat-clear-batch-last' });
+        return false;
+    }
+    const removeSet = new Set(removableIndexes.slice(0, batchSize));
+    const removed = removeSet.size;
+    chatHistory = history.filter((_, i) => !removeSet.has(i));
+
+    try {
+        await saveCurrentChat({ currentChatId: chatId, chatHistory });
+        // Remove the same oldest visible messages from the DOM.
+        $('.chat-box > .message').slice(0, removed).remove();
+        updateChatHistoryCollapse();
+        window.updateChatHistoryBatchButton?.();
+        window.showToast?.(`ล้างแล้ว ${removed} ข้อความ • กดซ้ำเพื่อล้างต่อ`, {
+            type: 'success',
+            key: 'chat-clear-batch'
+        });
+        return true;
+    } catch (e) {
+        console.error('Clear next chat messages failed:', e);
+        window.showToast?.('ล้างข้อความไม่สำเร็จ — ข้อมูลเดิมยังอยู่', {
+            type: 'error',
+            key: 'chat-clear-batch-failed'
+        });
+        return false;
+    }
+}
+window.clearNextChatMessages = clearNextChatMessages;
+
+function initChatHistoryBatchButton() {
+    if ($('.chat-history-clear-batch').length || !$('.chat.chat-current').length) return;
+    const $button = $('<button type="button" class="chat-history-clear-batch" aria-label="ล้าง 10 ข้อความ"><span>ล้าง 10 ข้อความ</span></button>');
+    $button.css({
+        display: 'none',
+        width: '100%',
+        minHeight: '34px',
+        padding: '6px 12px',
+        border: '0',
+        background: 'transparent',
+        color: 'var(--chat-text-2, #8b8b8b)',
+        font: 'inherit',
+        fontSize: '12px',
+        cursor: 'pointer'
+    });
+    $('.chat.chat-current').prepend($button);
+    $button.on('click', async function() {
+        $(this).prop('disabled', true);
+        try { await window.clearNextChatMessages?.(); }
+        finally { $(this).prop('disabled', false); window.updateChatHistoryBatchButton?.(); }
+    });
+    window.updateChatHistoryBatchButton = function() {
+        const count = $('.chat-box > .message').length;
+        $button.toggle(count > 0);
+        $button.find('span').text(count > 0 ? 'ล้าง 10 ข้อความ · เหลือ ' + count : 'ล้างข้อความหมดแล้ว');
+    };
+    window.updateChatHistoryBatchButton();
+}
+window.initChatHistoryBatchButton = initChatHistoryBatchButton;
+$(function() { initChatHistoryBatchButton(); });
+
+
+
 const _deletedChatIds = new Set();
 
 async function deleteChat(chatId) {
@@ -2736,6 +3082,9 @@ function terminateActiveTurn() {
 // next send was swallowed as an abort), the input kept its disabled styling,
 // and the previous turn's checklist lingered/re-rendered into the new chat.
 function resetChatUIForSwitch() {
+    // A staged preview belongs to the chat being left; cancel its turn token so
+    // a late tool/finally cannot reveal it over the destination project.
+    window.cancelPreviewTurn?.();
     // The in-flight controller (if any) was already aborted by
     // terminateActiveTurn(); clear the processing flags + ref so the new chat is
     // sendable right away and the next send starts a fresh request.
@@ -3022,6 +3371,24 @@ function isTransientTurnError(error) {
         'econnreset', 'socket hang up', 'connection reset', 'connection closed',
     ];
     return TRANSIENT.some(k => text.includes(k));
+}
+
+// A catalog entry can go stale between discovery and the request (for example,
+// a provider removes a free variant). Treat only clearly model-specific errors
+// as a reason to discard that entry and try another verified-free model.
+function isUnavailableFreeModelError(error) {
+    if (error?.error?.delegate === 'usage-limited-chat') return false;
+    const text = extractErrorText(error).toLowerCase();
+    if (!text || /(usage limit|quota exceeded|insufficient (?:credits?|funds?)|out of credits?)/.test(text)) return false;
+    const MODEL_UNAVAILABLE = [
+        'model not found', 'unknown model', 'model does not exist',
+        'model unavailable', 'model is unavailable', 'model not available',
+        'unsupported model', 'model is not supported', 'invalid model',
+        'no model found', 'no matching model', 'no endpoints found',
+        'does not support tool calling', 'tool calling is not supported',
+        'function calling is not supported', 'does not support streaming',
+    ];
+    return MODEL_UNAVAILABLE.some(phrase => text.includes(phrase));
 }
 
 // Exponential backoff base (ms) for retry N (0-indexed): 1s, 2s, 4s, 8s, capped.
@@ -3536,6 +3903,96 @@ window.saveComposerDraft = saveComposerDraft;
 window.settleComposerDraftIdentity = settleComposerDraftIdentity;
 // ===== composer-drafts (end) =====
 
+async function sendSimpleChatMessage(messageText, turnChatId) {
+    const text = String(messageText || '').trim();
+    if (!text) return;
+    const model = getActiveFreeModelId();
+    if (!model) {
+        window.showToast?.('ยังไม่มีโมเดลฟรีที่พร้อมใช้งาน', { type: 'error', key: 'no-free-ai-model', throttleMs: 5000 });
+        return;
+    }
+
+    const historyForChat = [{ role: 'system', content:
+        'You are SILELO, a friendly Thai-first AI assistant. This is ordinary conversation mode. ' +
+        'Do not build apps, edit files, run code, use tools, publish projects, or modify the user project. ' +
+        'Just have a natural helpful conversation. Answer in the language the user uses, with Thai preferred. ' +
+        'Be concise unless the user asks for detail.'
+    }];
+    for (const msg of (Array.isArray(chatHistory) ? chatHistory : [])) {
+        if (!msg || (msg.role !== 'user' && msg.role !== 'assistant')) continue;
+        if (typeof msg.content === 'string' && msg.content.trim()) {
+            historyForChat.push({ role: msg.role, content: msg.content });
+            continue;
+        }
+        if (Array.isArray(msg.content)) {
+            const textParts = msg.content
+                .filter(p => p && p.type === 'text' && typeof p.text === 'string')
+                .map(p => p.text)
+                .join('\n');
+            if (textParts.trim()) historyForChat.push({ role: msg.role, content: textParts });
+        }
+    }
+
+    const userId = generateMessageId();
+    appendMessage(nl_to_p(htmlEscape(text)), true, false, false, false, userId);
+    chatHistory.push({ role: 'user', content: text, messageId: userId });
+    scheduleSaveCurrentChat({ chatHistory, currentChatId: turnChatId, appDir: currentAppDir, interrupted: true });
+
+    isProcessing = true;
+    shouldStop = false;
+    activeTurnInterrupted = false;
+    abortController = new AbortController();
+    updateSendButtonState(true);
+    $('.chat-input').addClass('disabled');
+    $('.chat-input-message').prop('disabled', true);
+
+    const context = {
+        abortController,
+        tools: [],
+        chatHistory,
+        currentMessage: null,
+        currentMessageContent: '',
+        currentChatId: turnChatId,
+        appDir: currentAppDir,
+        turnSeq: ++_turnSeq,
+        deferPreviewUntilTurnComplete: false,
+        interrupted: true
+    };
+
+    try {
+        const stream = await abortableAwait(puter.ai.chat(historyForChat, {
+            model,
+            tools: [],
+            stream: true,
+            reasoning_effort: 'medium',
+            signal: abortController.signal
+        }), abortController.signal);
+        await handleMessageStream(stream, context);
+        if (!activeTurnInterrupted && !isAborted(abortController) && turnChatId === currentChatId) {
+            revealFinalReply(context, 0);
+            flushTurnUsage(context);
+            scheduleSaveCurrentChat({ chatHistory, currentChatId: turnChatId, appDir: currentAppDir, interrupted: false });
+        }
+    } catch (error) {
+        if (!activeTurnInterrupted && turnChatId === currentChatId) {
+            appendErrorMessage(friendlyErrorMessage(extractErrorText(error)));
+            chatHistory.push({ role: 'assistant', content: friendlyErrorMessage(extractErrorText(error)), isError: true });
+        }
+    } finally {
+        if (turnChatId === currentChatId) {
+            isProcessing = false;
+            shouldStop = false;
+            abortController = null;
+            $('.chat-input').removeClass('disabled');
+            $('.chat-input-message').prop('disabled', false);
+            $('.attachment-button').prop('disabled', false);
+            updateSendButtonState(false);
+            try { await saveCurrentChat({ chatHistory, currentChatId: turnChatId, appDir: currentAppDir, interrupted: false }); } catch (_) {}
+        }
+    }
+}
+window.sendSimpleChatMessage = sendSimpleChatMessage;
+
 async function sendChatMessage(userInput = null, skipAddToHistory = false, opts = {}) {
     // Resume an interrupted build: re-send the existing (sanitized) conversation
     // so the model picks up where it left off, instead of starting a new turn
@@ -3644,6 +4101,26 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
         return;
     }
 
+    // Refresh the live model catalog before consuming the composer. A stale
+    // localStorage value is never trusted: only a model currently reported as
+    // free by Puter can be used for this turn.
+    try {
+        let freeModels = await refreshFreeModelCatalog({ force: !AVAILABLE_FREE_MODELS.length });
+        if (!freeModels.length) freeModels = await refreshFreeModelCatalog({ force: true });
+        if (!freeModels.length || !getActiveFreeModelId()) {
+            window.showToast?.('No free AI models are available right now. Please try again shortly.',
+                { type: 'error', key: 'no-free-ai-model', throttleMs: 5000 });
+            _sendSetupInFlight = false;
+            return;
+        }
+    } catch (e) {
+        console.warn('Could not refresh free AI models before sending:', e);
+        window.showToast?.('Could not check free AI models. Check your connection and try again.',
+            { type: 'error', key: 'free-ai-model-check-failed', throttleMs: 5000 });
+        _sendSetupInFlight = false;
+        return;
+    }
+
     // Whether this send takes its text FROM the composer (a typed or voice
     // message) — as opposed to a programmatic send that brings its own text:
     // the preview's automatic error-fix report, the Issues panel's batch, a
@@ -3656,6 +4133,8 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
     const consumedComposer = !isResume && userInput == null && chat_input_message == null;
     const messageText = isResume ? '' : (userInput ?? chat_input_message ?? preAuthComposerText);
     chat_input_message = undefined;
+
+    // Ordinary conversation mode is deliberately isolated from the Builder turn.\n    // It uses the same selected free model, but no tools, sandbox, file writes, preview,\n    // publish, or automatic model handoff.\n    if (!isResume && isSimpleChatMode()) {\n        if (!messageText) { _sendSetupInFlight = false; return; }\n        if (consumedComposer) {\n            $('.chat-input-message').val('');\n            $('.chat-input-message').css('height', '40px');\n            clearComposerDraft(preAuthDraftContext);\n        }\n        clearContinueSuggestions();\n        _sendSetupInFlight = false;\n        await sendSimpleChatMessage(messageText, currentChatId);\n        return;\n    }
     if (!isResume && !messageText && (!consumedComposer || preAuthAttachments.length === 0)) { _sendSetupInFlight = false; return; }
 
     if (consumedComposer) {
@@ -3706,6 +4185,10 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
     // is attributed to the right project even if the user switches chats mid-turn.
     const turnChatId = currentChatId;
     const turnAppDir = currentAppDir;
+    // Give preview presentation the same turn identity as streaming/tool work:
+    // changed or newly-published apps stay in the background until this exact
+    // turn has finished and its final chat reply is visible.
+    window.beginPreviewTurn?.(turnChatId, turnSeq);
     // Stable per-turn save context. `chatHistory` is captured by reference — every
     // message pushed during the turn (user, assistant text, tool_use, tool_result,
     // and the error marker on the catch path) mutates THIS same array — so saving
@@ -4014,6 +4497,8 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
         // partial bubble. See the MAX_TURN_RETRIES / isTransientTurnError block.
         const turnTools = window.getTurnTools();
         let context = null;
+        const attemptedFreeModelIds = new Set();
+        let continuousBuildHandoffs = 0;
         while (true) {
             // A fresh AbortController per attempt. This is also the guard for a chat
             // switch during turn setup — terminateActiveTurn() may have run before
@@ -4026,7 +4511,10 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
             // from "a stale turn unwound late while a NEWER turn is streaming"
             // — a late unwind must not clear the live turn's watchdog flag.
             const attemptController = abortController;
+            let attemptModel = null;
             try {
+                attemptModel = getActiveFreeModelId();
+                if (!attemptModel) throw new Error('No free AI model is currently available.');
                 // Mark the attempt live for the background-freeze watchdog
                 // (mobile-lifecycle-keepalive above): it only ever aborts an
                 // attempt that is actually awaiting the stream, never a turn
@@ -4036,10 +4524,11 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
                 // against the signal locally (abortableAwait) — otherwise an
                 // abort couldn't unstick a connection that dies mid-open.
                 const stream = await abortableAwait(puter.ai.chat(prepareHistoryForAI(turnSaveContext.chatHistory), {
-                    model: MODEL,
+                    model: attemptModel,
                     tools: turnTools,
                     stream: true,
                     reasoning_effort: 'medium',
+                    compaction: true,
                     signal: abortController.signal
                 }), abortController.signal);
 
@@ -4053,9 +4542,25 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
                 // (handleToolCalls) keep the chat flagged in-progress until the
                 // end-of-turn save clears it — this is what makes a refresh during a
                 // long multi-round build resumable.
-                context = {abortController, tools: turnTools, chatHistory: turnSaveContext.chatHistory, currentMessage: null, currentMessageContent: '', currentChatId: turnChatId, appDir: turnAppDir, interrupted: true};
+                context = {abortController, tools: turnTools, chatHistory: turnSaveContext.chatHistory, currentMessage: null, currentMessageContent: '', currentChatId: turnChatId, appDir: turnAppDir, turnSeq, deferPreviewUntilTurnComplete: true, interrupted: true};
                 await handleMessageStream(stream, context);
                 if (abortController === attemptController) _turnAwaitingStream = false;
+                const unfinishedBuild = Array.isArray(window.currentTodos)
+                    && window.currentTodos.some(todo => todo && (todo.status === 'pending' || todo.status === 'in_progress'));
+                if (!shouldStop && !activeTurnInterrupted && turnChatId === currentChatId
+                    && unfinishedBuild && continuousBuildHandoffs < 9) {
+                    continuousBuildHandoffs++;
+                    attemptedFreeModelIds.add(attemptModel);
+                    if (attemptedFreeModelIds.size >= PRIMARY_FREE_MODEL_LIMIT) {
+                        attemptedFreeModelIds.clear();
+                        attemptedFreeModelIds.add(attemptModel);
+                    }
+                    const nextFreeModel = selectNextFreeModel(attemptedFreeModelIds);
+                    if (nextFreeModel) {
+                        prepareResumeHistory(turnSaveContext.chatHistory);
+                        continue;
+                    }
+                }
                 break; // stream drained (completed, or aborted/switched — handled below)
             } catch (streamError) {
                 if (abortController === attemptController) _turnAwaitingStream = false;
@@ -4070,16 +4575,19 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
                 const stallRecovery = _stallRecovery && !shouldStop
                     && !activeTurnInterrupted && turnChatId === currentChatId;
                 _stallRecovery = false;
+                const unavailableModel = !stallRecovery && isUnavailableFreeModelError(streamError);
                 if (!stallRecovery) {
-                    // Only OUR business: a genuine transient provider failure while
-                    // this turn is still the active, non-stopped chat. A user Stop, a
-                    // chat switch, or a non-transient error all propagate to the outer
-                    // catch/finally exactly as before.
+                    // Only OUR business: a transient provider hiccup, or a clear
+                    // model-specific availability error, while this turn is still
+                    // active. User Stop, chat switches, quota errors, and unrelated
+                    // failures still propagate unchanged.
                     const active = !shouldStop && !activeTurnInterrupted
                         && turnChatId === currentChatId && !isAborted(abortController);
-                    if (!active || !isTransientTurnError(streamError)) {
+                    if (!active || (!isTransientTurnError(streamError) && !unavailableModel)) {
                         throw streamError;
                     }
+                    if (attemptModel) attemptedFreeModelIds.add(attemptModel);
+                    if (unavailableModel) markFreeModelUnavailable(attemptModel);
                 }
                 // Drop any partial, unsaved narration bubble before resuming.
                 removeUncommittedBubble(context);
@@ -4105,6 +4613,17 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
                     window.track?.('Build Retry Exhausted');
                     break;
                 }
+                const nextFreeModel = attemptedFreeModelIds.size < PRIMARY_FREE_MODEL_LIMIT
+                    ? selectNextFreeModel(attemptedFreeModelIds)
+                    : null;
+                if (!nextFreeModel) {
+                    clearRetryStatus();
+                    retryGaveUp = true;
+                    gaveUpBannerText = 'The available free models could not complete this request. Resume to try again later.';
+                    window.track?.('Build Retry Exhausted');
+                    break;
+                }
+
                 const delayMs = Math.round(retryBackoffBaseMs(attempt) * (0.85 + Math.random() * 0.3));
                 // Failures while the page is hidden are counted separately (see
                 // hiddenRetries above) so a backgrounded phone can't burn the
@@ -4112,7 +4631,9 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
                 const hiddenRetry = document.visibilityState === 'hidden'
                     && hiddenRetries < MAX_HIDDEN_TURN_RETRIES;
                 if (hiddenRetry) hiddenRetries++; else attempt++;
-                showRetryStatus(Math.max(attempt, 1), MAX_TURN_RETRIES);
+                const nextName = nextFreeModel.name || nextFreeModel.id;
+                showRetryStatus(Math.max(attempt, 1), PRIMARY_FREE_MODEL_LIMIT,
+                    `Retrying with another free model: ${nextName}…`);
                 window.track?.('Build Retry', { attempt, ...(hiddenRetry && { hidden: true }) });
                 const proceed = await waitForRetry(delayMs, turnChatId);
                 clearRetryStatus();
@@ -4153,6 +4674,82 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
         // reloaded the preview mid-build, tracked a Build Completed, and told the
         // Issues panel its batch was done.
         const turnLive = turnSeq === _turnSeq && turnChatId === currentChatId;
+        if (!retryGaveUp && turnLive && !isAborted(abortController) && !activeTurnInterrupted && turnAppDir) {
+            try {
+                let publishDir = null;
+                try {
+                    await puter.fs.stat(`${turnAppDir}/index.html`);
+                    publishDir = turnAppDir;
+                } catch (_) {
+                    try {
+                        const entries = await puter.fs.readdir(turnAppDir);
+                        for (const entry of (entries || [])) {
+                            if (!entry || !entry.is_dir) continue;
+                            const subName = entry.name || '';
+                            if (!subName || subName.startsWith('.')) continue;
+                            const candidate = `${turnAppDir}/${subName}`;
+                            try {
+                                await puter.fs.stat(`${candidate}/index.html`);
+                                publishDir = candidate;
+                                break;
+                            } catch (__) { /* no index.html in this subdir */ }
+                        }
+                    } catch (__) { /* turnAppDir may not exist yet */ }
+                }
+
+                // Fallback for free/smaller models that output fenced ```html code blocks
+                // directly in chat text instead of calling the write tool.
+                if (!publishDir) {
+                    const hist = turnSaveContext.chatHistory || [];
+                    const lastMsg = hist[hist.length - 1];
+                    const lastText = (lastMsg && lastMsg.role === 'assistant' && typeof lastMsg.content === 'string')
+                        ? lastMsg.content : '';
+                    const htmlMatch = lastText.match(/```html\s*\n([\s\S]*?)```/i)
+                        || lastText.match(/(<!doctype html[\s\S]*?<\/html>)/i);
+                    if (htmlMatch && /<(html|head|body|div|main|section|canvas|script)\b/i.test(htmlMatch[1])) {
+                        let htmlCode = htmlMatch[1].trim();
+                        const cssMatch = lastText.match(/```css\s*\n([\s\S]*?)```/i);
+                        const jsMatch = lastText.match(/```(?:javascript|js)\s*\n([\s\S]*?)```/i);
+                        if (cssMatch && cssMatch[1].trim()) {
+                            const cssPath = `${turnAppDir}/styles.css`;
+                            await window.withFileLock(cssPath, () => window.writeFileVerified(cssPath, cssMatch[1].trim()));
+                            window.recordPreviewChange?.(cssPath);
+                            if (!/styles\.css/i.test(htmlCode) && /<\/head>/i.test(htmlCode)) {
+                                htmlCode = htmlCode.replace(/<\/head>/i, '<link rel="stylesheet" href="styles.css">\n</head>');
+                            }
+                        }
+                        if (jsMatch && jsMatch[1].trim()) {
+                            const jsPath = `${turnAppDir}/script.js`;
+                            await window.withFileLock(jsPath, () => window.writeFileVerified(jsPath, jsMatch[1].trim()));
+                            window.recordPreviewChange?.(jsPath);
+                            if (!/script\.js/i.test(htmlCode) && /<\/body>/i.test(htmlCode)) {
+                                htmlCode = htmlCode.replace(/<\/body>/i, '<script src="script.js"></script>\n</body>');
+                            }
+                        }
+                        const indexPath = `${turnAppDir}/index.html`;
+                        await window.withFileLock(indexPath, () => window.writeFileVerified(indexPath, htmlCode));
+                        window.markProjectModified?.('write', turnChatId);
+                        window.recordPreviewChange?.(indexPath);
+                        window.schedulePreviewRefresh?.(context || { currentChatId: turnChatId, turnSeq });
+                        publishDir = turnAppDir;
+                    }
+                }
+
+                // Auto-open the live preview pane if index.html exists and the model
+                // finished the turn without calling publish_site.
+                if (publishDir && !window.currentPreviewUrl && turnSeq === _turnSeq && turnChatId === currentChatId) {
+                    await window.executeFunction('publish_site', { path: publishDir }, context || {
+                        currentChatId: turnChatId,
+                        appDir: turnAppDir,
+                        abortController,
+                        turnSeq,
+                        deferPreviewUntilTurnComplete: true,
+                    });
+                }
+            } catch (autoPreviewErr) {
+                console.warn('Auto-preview fallback skipped:', autoPreviewErr);
+            }
+        }
         if (!retryGaveUp && turnLive) {
             window.flushPreviewRefresh?.();
         }
@@ -4322,8 +4919,11 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
     if (!supersededInChat) {
         // Pass the turn's chat id so a stale teardown (the user switched chats
         // while this turn was finishing) no-ops instead of clobbering the new
-        // chat's UI.
+        // chat's UI. A successful turn reveals as soon as its final reply and
+        // checklist are complete; this is the fallback reveal for an error or
+        // interruption, and a no-op if success already revealed it.
         resetUIState(turnChatId);
+        if (turnChatId === currentChatId) window.finishPreviewTurn?.(turnChatId, turnSeq);
     }
     // The turn is over — let the screen sleep again (no-op if a newer turn has
     // already started and still wants the lock).
@@ -4393,10 +4993,8 @@ async function sendChatMessage(userInput = null, skipAddToHistory = false, opts 
 // stale result (the user switched chats or started a new turn meanwhile) is
 // discarded rather than rendered into the wrong place.
 
-// A fast, cheap model is plenty for short follow-up ideas (and keeps this off
-// the critical path of the main, more capable build model).
-const SUGGESTION_MODEL = 'anthropic/claude-haiku-4-5';
-
+// Auxiliary chat requests (ideas, project names, and version labels) use the
+// currently selected, catalog-verified free model too; no hidden paid model IDs.
 // Bumped whenever suggestions are cleared or a new generation starts, so an
 // older in-flight generation can detect it has been superseded and bow out.
 let _suggestSeq = 0;
@@ -4748,6 +5346,8 @@ $(window).on('resize', () => {
 
 async function generateContinueSuggestions(turnSaveContext) {
     if (!turnSaveContext) return;
+    const suggestionModel = getActiveFreeModelId();
+    if (!suggestionModel) return;
     // Remember the context so the trailing "regenerate" chip can re-run against
     // the same conversation/app state on demand.
     _lastSuggestionContext = turnSaveContext;
@@ -4779,7 +5379,7 @@ async function generateContinueSuggestions(turnSaveContext) {
                 { role: 'system', content: SUGGESTION_SYSTEM_PROMPT },
                 { role: 'user', content: `Conversation so far:\n\n${transcript}${appSection}${avoidSection}\n\nSuggest 5 next steps.` },
             ],
-            { model: SUGGESTION_MODEL }
+            { model: suggestionModel }
         );
 
         // Discard if superseded: a newer generation/clear ran, the user switched
@@ -4803,11 +5403,8 @@ async function generateContinueSuggestions(turnSaveContext) {
 // ---- Automatic project naming --------------------------------------------
 // The first time a project actually produces a built app (its first publish —
 // see publish_site), give it a relevant, human-friendly name with the AI, unless
-// the user has already named it themselves. Reuses the fast suggestion model and
-// the transcript / app-HTML snapshot helpers above.
-
-// Distinct from the user prose suggestions, but the same lightweight model.
-const PROJECT_NAME_MODEL = SUGGESTION_MODEL;
+// the user has already named it themselves. Uses the transcript / app-HTML
+// snapshot helpers above and the currently selected free model.
 
 const PROJECT_NAME_SYSTEM_PROMPT = `You name web-app projects for the sidebar of an AI app builder.
 
@@ -4848,6 +5445,8 @@ function sanitizeProjectName(text) {
 // one), guarded to run once per project, and never throws into the caller.
 async function maybeAutoNameProject(context) {
     if (!context || !window.puter || !puter.ai) return;
+    const nameModel = getActiveFreeModelId();
+    if (!nameModel) return;
     const chatId = context.currentChatId;
     if (!chatId) return;
     if (_autoNamingInFlight.has(chatId) || _aiProjectTitles.has(chatId)) return;
@@ -4867,7 +5466,7 @@ async function maybeAutoNameProject(context) {
                 { role: 'system', content: PROJECT_NAME_SYSTEM_PROMPT },
                 { role: 'user', content: `Conversation so far:\n\n${transcript || '(no conversation text)'}${appSection}\n\nName this project.` },
             ],
-            { model: PROJECT_NAME_MODEL }
+            { model: nameModel }
         );
         const name = sanitizeProjectName(extractAIResponseText(response));
         if (!name) return;
@@ -4923,10 +5522,10 @@ async function applyAiProjectTitle(chatId, title) {
 // ---- Version-snapshot labelling ------------------------------------------
 // Each version-history snapshot needs a short label. The fallback (in
 // versions.js) is the truncated user message, which reads poorly for long or
-// rambly requests. This asks the fast suggestion model for a tiny description of
-// what the turn actually changed, so the panel reads like a changelog
+// rambly requests. This asks the currently selected free model for a tiny
+// description of what the turn changed, so the panel reads like a changelog
 // ("Add dark mode toggle") instead of a sentence fragment. Reuses the same
-// lightweight model + sanitiser as project naming.
+// free-model selection and sanitiser as project naming.
 
 const VERSION_LABEL_SYSTEM_PROMPT = `You label snapshots in the version history of an AI app builder. Each snapshot is the state of the app after one round of changes.
 
@@ -4945,6 +5544,8 @@ Reply with ONLY the label — nothing else.`;
 // context = { userMessage, assistantSummary }.
 async function generateVersionLabel(context) {
     if (!context || !window.puter || !puter.ai) return '';
+    const labelModel = getActiveFreeModelId();
+    if (!labelModel) return '';
     const userMessage = (context.userMessage || '').trim();
     const assistantSummary = (context.assistantSummary || '').trim();
     if (!userMessage && !assistantSummary) return '';
@@ -4957,7 +5558,7 @@ async function generateVersionLabel(context) {
                 { role: 'system', content: VERSION_LABEL_SYSTEM_PROMPT },
                 { role: 'user', content: `${parts.join('\n\n')}\n\nLabel this change.` },
             ],
-            { model: SUGGESTION_MODEL }
+            { model: labelModel }
         );
         // sanitizeProjectName strips wrapping quotes/markdown, collapses
         // whitespace, and caps the length — exactly the cleanup a label needs.

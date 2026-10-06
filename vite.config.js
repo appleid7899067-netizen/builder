@@ -40,6 +40,7 @@ const SCRIPTS = [
   'js/publish-errors.js',
   'js/issues-core.js',
   'js/worker-ownership.js',
+  'js/free-models.js',
   'js/tools.js',
   'js/ui.js',
   'js/mcp-ui.js',
@@ -199,6 +200,7 @@ function classicBundle() {
       }));
     },
     async closeBundle() {
+      fs.mkdirSync(OUT_DIR, { recursive: true });
       // The Puter runtime script — the "Made with Puter" badge plus the
       // click-to-edit bridge — loaded by every generated app via an absolute
       // <script src> URL (see src/runtime.js), so it must ship at stable,
@@ -261,7 +263,7 @@ function classicBundle() {
       // version of it instead. sitemap.xml is not here either: seoPagesPlugin
       // GENERATES it from the page registry, so it can never fall out of sync
       // with the pages that actually shipped.)
-      for (const f of ['robots.txt', 'puter-logo.png']) {
+      for (const f of ['robots.txt', 'puter-logo.png', 'lion-logo.svg', 'silelo-logo.svg']) {
         const src = path.join(SRC, f);
         if (fs.existsSync(src)) {
           fs.copyFileSync(src, path.join(OUT_DIR, f));
@@ -790,7 +792,9 @@ export default defineConfig({
   plugins: [classicBundle(), featuredFeedPlugin(), pwaPlugin(), seoPagesPlugin()],
   server: {
     port: 8080,
-    open: true,
+    host: true,
+    allowedHosts: true,
+    open: false,
   },
   build: {
     outDir: path.resolve(__dirname, 'dist'),

@@ -39,7 +39,7 @@ window.tools.push({
             // window.withFileLock.
             await window.withFileLock(path, () => puter.fs.move(path, destination));
         }
-        window.schedulePreviewRefresh?.();
+        window.schedulePreviewRefresh?.(state);
         return true;
     }
 })

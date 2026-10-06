@@ -2,7 +2,7 @@ window.tools.push({
     type: "function",
     function: {
         name: "publish_site",
-        description: `Opens the app's live PREVIEW for the user by hosting its directory at a working URL shown in the preview pane. This is the in-progress preview the user watches while you build — it is NOT a public release of their app. The user decides if and when to make the app public themselves, using the Publish button in the preview; you never make it public, and you should not tell the user the app is "live"/"published" or share a public link.\n
+        description: `Creates the app's private live PREVIEW by hosting its directory at a working URL for the in-app preview pane. Call this only AFTER all requested files are finished and the progress checklist is complete; do not open the preview midway through the build. The interface keeps the conversation visible while the assistant finishes and verifies the turn, then reveals the preview. This is NOT a public release: the user decides if and when to make the app public themselves, using the Publish button in the preview. Never make it public, call it "live"/"published", or share a public link.\n
 Only files and folders contained within the hosted directory (its descendants) can be accessed through this preview URL. Any directories at the same level (siblings), directories above it (parents), or files in those directories are completely inaccessible — the hosted directory becomes an isolated root, and everything outside it is hidden and unreachable, as if it doesn't exist.\n
 ABSOLUTELY VERY IMPORTANT: you only need to call this ONCE per app. The preview is connected to the directory and updates automatically when files change, so do NOT call it again on later edits.`,
         parameters: {
@@ -47,11 +47,16 @@ ABSOLUTELY VERY IMPORTANT: you only need to call this ONCE per app. The preview 
         // Remember which directory is served so the preview can drop its
         // propagation-probe marker into the correct (published) root.
         window.currentPreviewPath = path;
-        // Show the published site in the in-window preview pane (browser-like
-        // view). waitForReady makes the preview wait for the freshly-deployed
-        // content to propagate to the CDN before showing it.
+        // Stage the site in the in-window preview pane. During an assistant
+        // build, the iframe is loaded in the background for update_preview and
+        // the chat remains visible until the whole turn has finished.
         if (typeof window.showAppPreview === 'function') {
-            window.showAppPreview(url, { waitForReady: true });
+            window.showAppPreview(url, {
+                waitForReady: true,
+                deferUntilTurnComplete: state?.deferPreviewUntilTurnComplete === true,
+                chatId: state?.currentChatId,
+                turnSeq: state?.turnSeq,
+            });
         }
         // The project now has a real built app. If the user hasn't named it, give
         // it a relevant AI-generated name. Fire-and-forget (keyed by chatId, runs
